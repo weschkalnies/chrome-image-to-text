@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OCR Test Page</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #ffffff; }
+  /* Text liegt exakt im Bereich, den das Testskript mit der Maus aufzieht
+     (20%-80% Breite, 35%-65% Hoehe) -> optimale OCR-Vorlage */
+  .stage {
+    position: absolute; top: 35%; left: 20%; width: 60%; height: 30%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: Arial, "Segoe UI", sans-serif; font-weight: 900;
+    font-size: 44px; color: #000; letter-spacing: 2px; white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+  <div class="stage">HELLO WORLD 12345</div>
+</body>
+</html>

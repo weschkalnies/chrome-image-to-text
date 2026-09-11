@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "Local Screen OCR",
+  "version": "1.0.0",
+  "description": "Erfasst einen Bereich des Bildschirms und wandelt ihn lokal via Tesseract OCR in Text um. 100% offline.",
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_title": "Screenshot OCR starten"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "lib/tesseract.min.js",
+        "lib/worker.min.js",
+        "lib/tesseract-core-simd.wasm.js",
+        "lib/tesseract-core-simd.wasm",
+        "lib/tesseract-core-simd-lstm.wasm.js",
+        "lib/tesseract-core-simd-lstm.wasm",
+        "lib/eng.traineddata.gz",
+        "lib/deu.traineddata.gz"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

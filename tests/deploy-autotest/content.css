@@ -1,0 +1,59 @@
+/* =========================================================================
+   Local Screen OCR - Overlay & Toast Styles
+   Alle Selektoren sind absichtlich spezifisch (IDs + Attribut-Präfix),
+   um Konflikte mit Seiten-Styles zu vermeiden.
+   ========================================================================= */
+
+#ocr-overlay-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 2147483646; /* max int -1, unter dem Toast */
+  cursor: crosshair;
+  background: transparent;
+}
+
+#ocr-status-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  max-width: min(420px, 85vw);
+  background-color: #323232;
+  color: #ffffff;
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  /* Mehrzeilige Fehlermeldungen bleiben sauber formatiert */
+  white-space: pre-line;
+  word-break: break-word;
+  z-index: 2147483647; /* max int, über allem */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
+  pointer-events: none;
+  user-select: none;
+}
+
+#ocr-status-toast.ocr-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+#ocr-status-toast.ocr-closeable {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+#ocr-status-toast.ocr-error {
+  background-color: #b3261e;
+}
+
+#ocr-status-toast.ocr-success {
+  background-color: #1b6b3a;
+}

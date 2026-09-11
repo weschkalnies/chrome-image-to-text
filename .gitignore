@@ -1,0 +1,77 @@
+# ---------- VS Code / Editor ----------
+# VSCodium workspace-state file (.vsc) im Root - NICHT ins Repo (Nutzerwunsch)
+.vsc
+.vscode/*
+*.code-workspace
+# shared settings/extensions dürfen geteilt werden
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# Andere Editoren
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ---------- Node / npm ----------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm
+.pnp
+.pnp.js
+# Lockfiles: ggf. wieder reinnehmen, wenn du reproduzierbare Builds teilen willst
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# ---------- Build / Distribution ----------
+dist/
+build/
+out/
+# Gepackte Extension-Releases & privater Signier-Key NICHT ins Repo
+*.zip
+*.crx
+*.pem
+releases/
+release/
+
+# ---------- Test-Artefakte ----------
+# Chrome-Profile, die beim Testen (Playwright) erzeugt werden
+tests/.tmp-profile*
+# Test-Output-Logs
+tests/*.out.txt
+# Allgemeine Temp-Verzeichnisse
+.tmp/
+tmp/
+.cache/
+*.tmp
+
+# ---------- Logs ----------
+logs/
+*.log
+
+# ---------- Environment / Secrets ----------
+.env
+.env.*
+!.env.example
+*.local
+secrets.json
+credentials.json
+
+# ---------- Test / Coverage ----------
+coverage/
+.nyc_output/
+
+# ---------- OS / Sonstiges ----------
+*.bak
+*.orig
+.directory
+PROJECT_KNOWLEDGE.md
+chrome_ocr_extension_spec.md
