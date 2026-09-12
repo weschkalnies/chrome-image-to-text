@@ -1,16 +1,23 @@
 /**
- * Local Screen OCR - Content Script
+ * Local Screen OCR - Content Script (Orchestrator)
  *
  * Verwaltet:
  *  - das Canvas-Overlay zur Bereichsauswahl mit der Maus
  *  - ESC-Abbruch
  *  - das exakte Zuschneiden des Screenshots (inkl. devicePixelRatio)
  *  - die lokale OCR-Erkennung via Tesseract.js (offline)
- *  - das Kopieren des Ergebnisses in die Zwischenablage (mit Fallback)
+ *
+ * Querschnittsfunktionen liegen als Helper-Module unter lib/ocr/ und werden
+ * ueber den gemeinsamen Namespace `self.Ocr` angesprochen (INJEKTIONSREIHEN-
+ * FOLGE beachten: config -> toast -> logger -> clipboard -> content.js):
+ *  - lib/ocr/config.js     -> Ocr.Config                             (Konstanten)
+ *  - lib/ocr/toast.js      -> Ocr.showToast()                        (Status-Toast)
+ *  - lib/ocr/logger.js     -> Ocr.log() / showError() / checkTesseractLoaded()
+ *  - lib/ocr/clipboard.js  -> Ocr.copyToClipboard()                  (Zwischenablage)
  *
  * Sicherheitsmerkmale:
  *  - IIFE-Guard verhindert Mehrfach-Initialisierung
- *  - Nur textContent, niemals innerHTML -> kein DOM-XSS
+ *  - Nur textContent, niemals innerHTML -> kein DOM-XSS (in lib/ocr/toast.js)
  *  - Begrenzung der Crop-Abmessungen (DoS-Schutz)
  *  - Defensive Prüfungen auf null/undefined
  *  - Keine Auswertung von page-eigenem Content
@@ -22,31 +29,19 @@
   window.__ocrInitialized = true;
 
   /* -----------------------------------------------------------------------
-     Konfiguration
+     Guard: Helper-Module muessen VOR diesem Skript injiziert worden sein.
+     Fehlt der gemeinsame Ocr-Namespace, ist hier Schluss (klare Diagnose).
      --------------------------------------------------------------------- */
+  if (!window.Ocr || typeof Ocr.Config !== "object") {
+    console.error(
+      "[OCR] Helper-Module fehlen (lib/ocr/config|toast|logger|clipboard.js). " +
+        "Bitte Injection-Reihenfolge in background.js pruefen."
+    );
+    return;
+  }
 
-  const CONFIG = {
-    // Mindestgröße eines Auswahlrechtecks in CSS-Pixeln
-    minSelectionSize: 5,
-    // Maximal zulässige Crop-Pixel (Breite * Hoehe). Verhindert, dass ein
-    // absichtlich riesiger Screenshot den Browser/UI-Thread lahmlegt.
-    maxCropPixels: 4000 * 4000,
-    // OCR-Sprachen (Tesseract traineddata muessen lokal vorliegen)
-    ocrLanguages: ["eng", "deu"],
-    // Toast-Dauern in ms (Fehler laenger, damit sie lesbar sind)
-    toastShortMs: 3000,
-    toastErrorMs: 10000,
-    // Pfade zu den lokalen Tesseract-Ressourcen (offline)
-    tesseract: {
-      workerPath: chrome.runtime.getURL("lib/worker.min.js"),
-      corePath: chrome.runtime.getURL("lib/"),
-      langPath: chrome.runtime.getURL("lib/"),
-      // Worker als Blob laden -> umgeht page-CSP (worker-src) Restriktionen,
-      // die das Erstellen des Tesseract-Web-Workers auf fremden Seiten
-      // blockieren wuerden. Sehr haeufige Fehlerursache in Extensions.
-      workerBlobURL: true,
-    },
-  };
+  /** Kurzalias auf die zentrale Konfiguration (lib/ocr/config.js). */
+  const CONFIG = Ocr.Config;
 
   /* -----------------------------------------------------------------------
      Zustand (Module-Level)
@@ -56,76 +51,29 @@
   let selectionInProgress = false;
 
   /* -----------------------------------------------------------------------
-     Logging & Fehleranzeige
-     Alle Meldungen erscheinen mit Praefix "[OCR]" in der Devtools-Konsole
-     der Zielseite und (gekuerzt) als Toast fuer den Nutzer.
-     --------------------------------------------------------------------- */
-
-  function log(...args) {
-    console.log("[OCR]", ...args);
-  }
-
-  /**
-   * Detaillierte Fehlermeldung: schreibt den vollen Fehler (inkl. Stack)
-   * in die Konsole und zeigt eine lesbare Nachricht als Toast an.
-   *
-   * @param {string} context  Was gerade versucht wurde (z.B. "Texterkennung")
-   * @param {Error|*} err     Das Fehlerobjekt
-   * @param {object} [extra]  Zusaetzliche Diagnosedaten (key->value)
-   */
-  function showError(context, err, extra) {
-    const name = (err && err.name) || "Error";
-    const msg = (err && err.message) || String(err);
-    console.error("[OCR]", context, "-", name + ":", msg, "\n", err, extra || "");
-
-    // Lesbare Toast-Zeile(n) bauen (nur textContent -> kein XSS)
-    let line = context + " fehlgeschlagen:";
-    line += "\n" + name + ": " + msg;
-    if (extra) {
-      for (const k in extra) {
-        if (Object.prototype.hasOwnProperty.call(extra, k)) {
-          line += "\n" + k + ": " + extra[k];
-        }
-      }
-    }
-    showToast(line, "error", CONFIG.toastErrorMs, true);
-  }
-
-  /** Prueft ob Tesseract global verfuegbar ist und protokolliert die Version. */
-  function checkTesseractLoaded() {
-    const ok = typeof Tesseract !== "undefined" && !!Tesseract.createWorker;
-    log(
-      "Tesseract geladen:",
-      ok,
-      ok && Tesseract.version ? "v" + Tesseract.version : "(Version unbekannt)"
-    );
-    return ok;
-  }
-
-  /* -----------------------------------------------------------------------
      Message-Listener
      --------------------------------------------------------------------- */
 
   chrome.runtime.onMessage.addListener((message) => {
     if (message && message.action === "start_selection") {
-      log("start_selection empfangen");
+      Ocr.log("start_selection empfangen");
       if (selectionInProgress) {
-        log("Abbruch: Auswahl laeuft bereits");
+        Ocr.log("Abbruch: Auswahl laeuft bereits");
         return; // keine parallelen Overlays
       }
       if (
         typeof message.imageUri !== "string" ||
         !message.imageUri.startsWith("data:image/")
       ) {
-        showError(
+        Ocr.showError(
           "Start",
           new Error("Ungueltige Bilddaten empfangen (kein data:image/*)."),
           { type: typeof message.imageUri }
         );
         return;
       }
-      if (!checkTesseractLoaded()) {
-        showError(
+      if (!Ocr.checkTesseractLoaded()) {
+        Ocr.showError(
           "Start",
           new Error(
             "Tesseract.js ist nicht geladen. Moegliche Ursache: die Seite " +
@@ -138,19 +86,18 @@
     }
   });
 
-
   /* -----------------------------------------------------------------------
      Auswahl-Overlay
      --------------------------------------------------------------------- */
 
   function initSelection(imageUri) {
     if (!document.body) {
-      showError("Start", new Error("document.body ist nicht vorhanden (Seite noch nicht bereit)."));
+      Ocr.showError("Start", new Error("document.body ist nicht vorhanden (Seite noch nicht bereit)."));
       return;
     }
 
     selectionInProgress = true;
-    log("Overlay wird erstellt", window.innerWidth + "x" + window.innerHeight, "DPR=" + (window.devicePixelRatio || 1));
+    Ocr.log("Overlay wird erstellt", window.innerWidth + "x" + window.innerHeight, "DPR=" + (window.devicePixelRatio || 1));
 
     const canvas = document.createElement("canvas");
     canvas.id = "ocr-overlay-canvas";
@@ -163,7 +110,7 @@
     const ctx = canvas.getContext("2d");
     if (!ctx) {
       cleanupOverlay();
-      showError("Overlay", new Error("2D-Canvas-Kontext nicht verfuegbar."));
+      Ocr.showError("Overlay", new Error("2D-Canvas-Kontext nicht verfuegbar."));
       return;
     }
 
@@ -172,12 +119,12 @@
     let imgLoaded = false;
     img.onload = () => {
       imgLoaded = true;
-      log("Screenshot geladen", img.naturalWidth + "x" + img.naturalHeight);
+      Ocr.log("Screenshot geladen", img.naturalWidth + "x" + img.naturalHeight);
       drawOverlay(ctx, canvas, null);
     };
     img.onerror = () => {
       cleanupOverlay();
-      showError("Screenshot-Laden", new Error("Das dataURL-Bild konnte nicht dekodiert werden."), {
+      Ocr.showError("Screenshot-Laden", new Error("Das dataURL-Bild konnte nicht dekodiert werden."), {
         dataLen: imageUri ? imageUri.length : 0,
       });
     };
@@ -215,7 +162,7 @@
         rect.h >= CONFIG.minSelectionSize
       ) {
         if (!imgLoaded) {
-          showError("OCR", new Error("Screenshot wurde noch nicht dekodiert, als die Auswahl endete."));
+          Ocr.showError("OCR", new Error("Screenshot wurde noch nicht dekodiert, als die Auswahl endete."));
           return;
         }
         runOcr(img, rect);
@@ -301,15 +248,15 @@
      --------------------------------------------------------------------- */
 
   async function runOcr(img, rect) {
-    showToast("Erkenne Text (lokal) …");
-    log("Starte OCR fuer Auswahl", JSON.stringify(rect), "Bild", img.naturalWidth + "x" + img.naturalHeight);
+    Ocr.showToast("Erkenne Text (lokal) …");
+    Ocr.log("Starte OCR fuer Auswahl", JSON.stringify(rect), "Bild", img.naturalWidth + "x" + img.naturalHeight);
     try {
       let croppedDataUrl;
       try {
         croppedDataUrl = cropImage(img, rect.x, rect.y, rect.w, rect.h);
-        log("Crop erzeugt", croppedDataUrl.length + " Zeichen dataURL");
+        Ocr.log("Crop erzeugt", croppedDataUrl.length + " Zeichen dataURL");
       } catch (cropErr) {
-        showError("Zuschneiden", cropErr, {
+        Ocr.showError("Zuschneiden", cropErr, {
           auswahl: rect.w + "x" + rect.h,
           bild: img.naturalWidth + "x" + img.naturalHeight,
         });
@@ -320,34 +267,34 @@
       const trimmed = (text || "").trim();
 
       if (trimmed) {
-        const copied = await copyToClipboard(trimmed);
-        showToast(
+        const copied = await Ocr.copyToClipboard(trimmed);
+        Ocr.showToast(
           copied
             ? "Text in Zwischenablage kopiert!"
             : "Text erkannt, aber Zwischenablage nicht verfuegbar (siehe Konsole).",
           copied ? "success" : "error"
         );
-        log("OCR fertig, Textlaenge", trimmed.length, "kopiert:", copied);
+        Ocr.log("OCR fertig, Textlaenge", trimmed.length, "kopiert:", copied);
       } else {
-        showToast("Kein Text erkannt.", "error");
-        log("OCR fertig, kein Text");
+        Ocr.showToast("Kein Text erkannt.", "error");
+        Ocr.log("OCR fertig, kein Text");
       }
     } catch (err) {
-      showError("Texterkennung", err, {
+      Ocr.showError("Texterkennung", err, {
         Sprachen: CONFIG.ocrLanguages.join("+"),
       });
     }
   }
 
   async function recognizeText(dataUrl) {
-    if (!checkTesseractLoaded()) {
+    if (!Ocr.checkTesseractLoaded()) {
       throw new Error(
         "Tesseract.js ist nicht verfuegbar (global 'Tesseract' fehlt). " +
           "Wahrscheinlich wurde lib/tesseract.min.js durch die CSP der Seite blockiert."
       );
     }
 
-    log("Erstelle Tesseract-Worker", JSON.stringify(CONFIG.tesseract));
+    Ocr.log("Erstelle Tesseract-Worker", JSON.stringify(CONFIG.tesseract));
 
     // Tesseract.js v5 API: createWorker(langs, oem, options)
     const worker = await Tesseract.createWorker(CONFIG.ocrLanguages, 1, {
@@ -357,110 +304,24 @@
       gzip: true,
       workerBlobURL: CONFIG.tesseract.workerBlobURL,
       // Logger: Tesseract-Fortschritt/Status landet in der Konsole
-      logger: (m) => log("Tesseract:", m.status, m.progress != null ? (m.progress * 100).toFixed(0) + "%" : ""),
-      errorHandler: (e) => log("Tesseract-Worker-Fehler:", e),
+      logger: (m) => Ocr.log("Tesseract:", m.status, m.progress != null ? (m.progress * 100).toFixed(0) + "%" : ""),
+      errorHandler: (e) => Ocr.log("Tesseract-Worker-Fehler:", e),
     });
 
-    log("Worker initialisiert, starte recognize()");
+    Ocr.log("Worker initialisiert, starte recognize()");
     try {
       const ret = await worker.recognize(dataUrl);
-      log("recognize() fertig", ret ? "ok" : "leer");
+      Ocr.log("recognize() fertig", ret ? "ok" : "leer");
       return ret && ret.data ? ret.data.text : "";
     } finally {
       // Worker immer terminieren, sonst leakt der Web Worker
       try {
         await worker.terminate();
-        log("Worker terminiert");
+        Ocr.log("Worker terminiert");
       } catch (termErr) {
-        log("Worker-Terminierung fehlgeschlagen:", termErr);
+        Ocr.log("Worker-Terminierung fehlgeschlagen:", termErr);
       }
     }
-  }
-
-  /* -----------------------------------------------------------------------
-     Zwischenablage (mit Fallback)
-     --------------------------------------------------------------------- */
-
-  async function copyToClipboard(text) {
-    // Bevorzugt: asynchrone Clipboard-API
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      try {
-        await navigator.clipboard.writeText(text);
-        return true;
-      } catch (e) {
-        // Fallback (z.B. fehlender Fokus / nicht-secure context)
-      }
-    }
-    // Fallback: execCommand
-    try {
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      ta.setAttribute("readonly", "");
-      ta.style.position = "fixed";
-      ta.style.top = "-9999px";
-      document.body.appendChild(ta);
-      ta.select();
-      const ok = document.execCommand("copy");
-      document.body.removeChild(ta);
-      return ok;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  /* -----------------------------------------------------------------------
-     Toast-Benachrichtigung
-     --------------------------------------------------------------------- */
-
-  let toastTimer = null;
-
-  function showToast(message, type, duration, allowClose) {
-    let toast = document.getElementById("ocr-status-toast");
-    if (!toast) {
-      toast = document.createElement("div");
-      toast.id = "ocr-status-toast";
-      toast.setAttribute("role", "status");
-      toast.setAttribute("aria-live", "polite");
-      document.body.appendChild(toast);
-    }
-
-    // WICHTIG: nur textContent, niemals innerHTML -> kein DOM-XSS
-    // Mehrzeilige Fehler bleiben lesbar (white-space: pre-line im CSS)
-    toast.textContent = message;
-
-    toast.classList.remove("ocr-error", "ocr-success", "ocr-closeable");
-    if (type === "error") toast.classList.add("ocr-error");
-    else if (type === "success") toast.classList.add("ocr-success");
-    if (allowClose) {
-      toast.classList.add("ocr-closeable");
-      toast.title = "Klicken zum Schließen";
-    }
-
-    // Klick schliesst den Toast sofort (bei allowClose)
-    const onClickClose = () => {
-      toast.removeEventListener("click", onClickClose);
-      if (toastTimer) {
-        clearTimeout(toastTimer);
-        toastTimer = null;
-      }
-      toast.classList.remove("ocr-visible");
-      setTimeout(() => {
-        if (toast && toast.parentNode) toast.parentNode.removeChild(toast);
-      }, 250);
-    };
-    if (allowClose) toast.addEventListener("click", onClickClose);
-
-    requestAnimationFrame(() => toast.classList.add("ocr-visible"));
-
-    const ms = duration || (type === "error" ? CONFIG.toastErrorMs : CONFIG.toastShortMs);
-    if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
-      toast.removeEventListener("click", onClickClose);
-      toast.classList.remove("ocr-visible");
-      setTimeout(() => {
-        if (toast && toast.parentNode) toast.parentNode.removeChild(toast);
-      }, 250);
-    }, ms);
   }
 
   /* -----------------------------------------------------------------------

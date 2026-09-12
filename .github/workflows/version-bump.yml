@@ -39,11 +39,11 @@ jobs:
 
           echo "Bump: $CURRENT -> $NEW"
 
-          for f in deploy/manifest.json ocr-extension/manifest.json; do
+          for f in src/manifest.json deploy/manifest.json; do
             jq --arg v "$NEW" '.version = $v' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
           done
 
-          git add deploy/manifest.json ocr-extension/manifest.json
+          git add src/manifest.json deploy/manifest.json
           git commit -m "chore(release): bump version to $NEW [skip ci]"
           git tag "$TAG"
           git push origin main --tags

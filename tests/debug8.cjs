@@ -8,7 +8,7 @@ const path = require("path");
 const fs = require("fs");
 
 const EXT = process.argv[2] || path.join(__dirname, "minimal-ext");
-const CHROME = require("./_env").resolveChrome();
+const CHROME = require("./_env.cjs").resolveChrome();
 const TMP = path.join(__dirname, ".tmp-profile-log");
 const PORT = 9334;
 

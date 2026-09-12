@@ -60,11 +60,21 @@ chrome.action.onClicked.addListener(async (tab) => {
     console.log("[OCR] Screenshot erstellt, Laenge", dataUrl.length);
 
     // 2. Skripte genau einmal pro Tab injizieren (verhindert Duplikate & Race-Conditions)
+    //    Reihenfolge ist relevant: tesseract.min.js (global Tesseract),
+    //    dann die Helper-Module (Namespace self.Ocr), dann content.js,
+    //    das auf beides zugreift.
     if (!INJECTED_TABS.has(tab.id)) {
-      console.log("[OCR] Injiziere tesseract.min.js + content.js in Tab", tab.id);
+      console.log("[OCR] Injiziere tesseract.min.js + lib/ocr/* + content.js in Tab", tab.id);
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ["lib/tesseract.min.js", "content.js"],
+        files: [
+          "lib/tesseract.min.js",
+          "lib/ocr/config.js",
+          "lib/ocr/toast.js",
+          "lib/ocr/logger.js",
+          "lib/ocr/clipboard.js",
+          "content.js",
+        ],
       });
       await chrome.scripting.insertCSS({
         target: { tabId: tab.id },

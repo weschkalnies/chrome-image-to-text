@@ -1,0 +1,12 @@
+{
+  "name": "chrome-image-to-text",
+  "version": "1.0.3",
+  "private": true,
+  "description": "Local Screen OCR – Chrome-Erweiterung (Manifest V3), 100% offline. Build: src/ -> deploy/.",
+  "scripts": {
+    "build": "node tools/build.js",
+    "build:autotest": "node tools/build.js --autotest",
+    "check": "node tools/build.js --check",
+    "test:e2e": "node tests/run2.cjs"
+  }
+}

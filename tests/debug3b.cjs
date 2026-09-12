@@ -6,7 +6,7 @@ const path = require("path");
 const fs = require("fs");
 
 const EXT = path.join(__dirname, "minimal-ext");
-const CHROME = require("./_env").resolveChrome();
+const CHROME = require("./_env.cjs").resolveChrome();
 const TMP = path.join(__dirname, ".tmp-profile-min");
 
 (async () => {

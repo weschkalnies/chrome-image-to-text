@@ -15,7 +15,7 @@ const path = require("path");
 const fs = require("fs");
 
 const EXT = process.argv[2] || path.join(__dirname, "..", "deploy");
-const CHROME = require("./_env").resolveChrome();
+const CHROME = require("./_env.cjs").resolveChrome();
 const TMP = path.join(__dirname, ".tmp-profile-test-" + Date.now());
 const PORT = 9336;
 const PAGE_URL = "file:///" + path.join(__dirname, "page.html").replace(/\\/g, "/");
@@ -111,7 +111,14 @@ const pushLog = (s) => { logs.push(s); console.log(s); };
           const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
           if (!tab) return { error: "kein aktiver Tab" };
           const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
-          await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["lib/tesseract.min.js", "content.js"] });
+          await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: [
+            "lib/tesseract.min.js",
+            "lib/ocr/config.js",
+            "lib/ocr/toast.js",
+            "lib/ocr/logger.js",
+            "lib/ocr/clipboard.js",
+            "content.js",
+          ] });
           await chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: ["content.css"] });
           await chrome.tabs.sendMessage(tab.id, { action: "start_selection", imageUri: dataUrl });
           return { ok: true, dataLen: dataUrl.length };
