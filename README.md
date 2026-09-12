@@ -151,3 +151,11 @@ Sprachmodelle stehen unter Apache-2.0 bzw. den jeweiligen Tesseract-Lizenzen.
 Diese Erweiterung baut auf [Tesseract.js](https://github.com/naptha/tesseract.js) auf, der JavaScript-/WebAssembly-Port von Tesseract OCR. Danke an das gesamte Tesseract- und Tesseract.js-Team.
 
 Die OCR läuft vollständig im Browser über einen **Web-Worker** mit **SIMD-LSTM-Core** von Tesseract.js. Sprach- und Core-Dateien werden per `fetch` aus der Erweiterung selbst geladen (`web_accessible_resources`) – niemals aus dem Netz.
+
+---
+
+## ☕ Support me
+
+Wenn dir diese Erweiterung hilft, freue ich mich über einen Kaffee:
+
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-weschkalnies-yellow?logo=buy-me-a-coffee)](https://www.buymeacoffee.com/weschkalnies)

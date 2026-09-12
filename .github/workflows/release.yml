@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Tag-Version mit manifest.json abgleichen
+        run: |
+          set -euo pipefail
+          VERSION=$(jq -r '.version' deploy/manifest.json)
+          TAG="${GITHUB_REF_NAME#v}"
+          echo "Tag=$TAG  Manifest=$VERSION"
+          if [ "$TAG" != "$VERSION" ]; then
+            echo "::error::Tag v$TAG stimmt nicht mit deploy/manifest.json-Version $VERSION überein."
+            exit 1
+          fi
+
+      - name: Extension zippen (nur Runtime-Dateien)
+        run: |
+          set -euo pipefail
+          VERSION=$(jq -r '.version' deploy/manifest.json)
+          OUT="local-screen-ocr-v${VERSION}.zip"
+          (cd deploy && zip -r "../$OUT" . \
+            -x 'README.md' 'SECURITY_AUDIT.md' 'PROJECT_KNOWLEDGE.md' 'report.md' 'INSTALL.md')
+          echo "ZIP=$OUT" >> "$GITHUB_ENV"
+
+      - name: GitHub Release erstellen
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ github.ref_name }}
+          generate_release_notes: true
+          files: ${{ env.ZIP }}
