@@ -268,10 +268,12 @@
 
       if (trimmed) {
         const copied = await Ocr.copyToClipboard(trimmed);
-        // Detail-Zeile: Zeichenzahl + ermittelte Sprache (hoechste Konfidenz)
-        const details =
-          trimmed.length + " Zeichen · " + result.language +
-          " (Konfidenz " + Math.round(result.confidence) + "%)";
+        // Detail-Zeile: Zeichenzahl, ggf. Sprache (nur wenn eindeutig), Konfidenz
+        let details = trimmed.length + " Zeichen";
+        if (result.language) {
+          details += " · " + result.language;
+        }
+        details += " (Konfidenz " + Math.round(result.confidence) + "%)";
         Ocr.showToast(
           (copied
             ? "Text in Zwischenablage kopiert!"
@@ -343,21 +345,37 @@
     const workers = await Promise.all(langs.map(createOcrWorker));
     Ocr.log("Worker bereit nach", Date.now() - t0, "ms");
 
+    // Schwellwert fuer eindeutige Sprachzuordnung: Besteht zwischen der
+    // besten und der zweitbesten Konfidenz ein kleinerer Abstand, ist die
+    // Sprache nicht sicher unterscheidbar und wird dem Nutzer NICHT
+    // angezeigt (verhindert irrefuehrende Angaben bei sprachneutralem Text
+    // wie Ziffern oder Latein, das in beiden Sprachen vorkommt).
+    const LANG_UNCERTAINTY_MARGIN = 5;
+
     try {
       const results = await Promise.all(
         workers.map((worker, i) => recognizeWith(worker, dataUrl, langs[i]))
       );
       // Hoechste Konfidenz gewinnt; bei Gleichstand gewinnt die erste Sprache.
-      const best = results.reduce((a, b) => (b.confidence > a.confidence ? b : a));
+      const sorted = results.slice().sort((a, b) => b.confidence - a.confidence);
+      const best = sorted[0];
+      const runnerUp = sorted[1];
+      // Sprache nur melden, wenn eindeutig: deutlicher Vorsprung ODER nur
+      // eine Sprache konfiguriert (dann trivial eindeutig).
+      const unambiguous = langs.length === 1 || !runnerUp ||
+        best.confidence - runnerUp.confidence >= LANG_UNCERTAINTY_MARGIN;
       Ocr.log(
         "Bestes Ergebnis: Sprache", best.language,
         "Konfidenz", best.confidence.toFixed(1),
+        "Zweitbeste", runnerUp ? runnerUp.language + " " + runnerUp.confidence.toFixed(1) : "-",
+        "eindeutig:", unambiguous,
         "Zeichen", (best.text || "").trim().length
       );
       return {
         text: best.text,
         confidence: best.confidence,
-        language: languageLabel(best.language),
+        // null => Sprache nicht eindeutig ermittelbar (keine Anzeige im Toast)
+        language: unambiguous ? languageLabel(best.language) : null,
       };
     } finally {
       // Worker immer terminieren, sonst leaken die Web Worker
