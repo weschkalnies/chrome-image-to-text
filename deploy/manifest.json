@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Local Screen OCR",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Erfasst einen Bereich des Bildschirms und wandelt ihn lokal via Tesseract OCR in Text um. 100% offline.",
   "permissions": [
     "activeTab",
