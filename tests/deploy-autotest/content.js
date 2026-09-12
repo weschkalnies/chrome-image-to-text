@@ -263,18 +263,23 @@
         return;
       }
 
-      const text = await recognizeText(croppedDataUrl);
-      const trimmed = (text || "").trim();
+      const result = await recognizeText(croppedDataUrl);
+      const trimmed = (result.text || "").trim();
 
       if (trimmed) {
         const copied = await Ocr.copyToClipboard(trimmed);
+        // Detail-Zeile: Zeichenzahl + ermittelte Sprache (hoechste Konfidenz)
+        const details =
+          trimmed.length + " Zeichen · " + result.language +
+          " (Konfidenz " + Math.round(result.confidence) + "%)";
         Ocr.showToast(
-          copied
+          (copied
             ? "Text in Zwischenablage kopiert!"
-            : "Text erkannt, aber Zwischenablage nicht verfuegbar (siehe Konsole).",
+            : "Text erkannt, aber Zwischenablage nicht verfuegbar (siehe Konsole).") +
+            "\n" + details,
           copied ? "success" : "error"
         );
-        Ocr.log("OCR fertig, Textlaenge", trimmed.length, "kopiert:", copied);
+        Ocr.log("OCR fertig,", details, "kopiert:", copied);
       } else {
         Ocr.showToast("Kein Text erkannt.", "error");
         Ocr.log("OCR fertig, kein Text");
@@ -286,6 +291,39 @@
     }
   }
 
+  /** Anzeigename fuer eine Tesseract-Sprachkennung (Fallback: Kennung selbst). */
+  function languageLabel(lang) {
+    const LABELS = { eng: "Englisch", deu: "Deutsch" };
+    return LABELS[lang] || lang;
+  }
+
+  /** Ein recognize() inkl. Extraktion von Text + Konfidenz. */
+  async function recognizeWith(worker, dataUrl, lang) {
+    const ret = await worker.recognize(dataUrl);
+    return {
+      text: ret && ret.data ? ret.data.text : "",
+      // data.confidence: 0–100 (Tesseract-Gesamtkonfidenz der Erkennung)
+      confidence:
+        ret && ret.data && typeof ret.data.confidence === "number"
+          ? ret.data.confidence
+          : 0,
+      language: lang,
+    };
+  }
+
+  /** Erstellt einen Tesseract-Worker fuer EINE Sprache (v5-API). */
+  function createOcrWorker(lang) {
+    return Tesseract.createWorker(lang, 1, {
+      workerPath: CONFIG.tesseract.workerPath,
+      corePath: CONFIG.tesseract.corePath,
+      langPath: CONFIG.tesseract.langPath,
+      gzip: true,
+      workerBlobURL: CONFIG.tesseract.workerBlobURL,
+      logger: (m) => Ocr.log("Tesseract[" + lang + "]:", m.status, m.progress != null ? (m.progress * 100).toFixed(0) + "%" : ""),
+      errorHandler: (e) => Ocr.log("Tesseract-Worker-Fehler[" + lang + "]:", e),
+    });
+  }
+
   async function recognizeText(dataUrl) {
     if (!Ocr.checkTesseractLoaded()) {
       throw new Error(
@@ -294,33 +332,43 @@
       );
     }
 
-    Ocr.log("Erstelle Tesseract-Worker", JSON.stringify(CONFIG.tesseract));
+    const langs = CONFIG.ocrLanguages;
+    Ocr.log("Erstelle", langs.length, "Tesseract-Worker parallel:", langs.join(", "));
 
-    // Tesseract.js v5 API: createWorker(langs, oem, options)
-    const worker = await Tesseract.createWorker(CONFIG.ocrLanguages, 1, {
-      workerPath: CONFIG.tesseract.workerPath,
-      corePath: CONFIG.tesseract.corePath,
-      langPath: CONFIG.tesseract.langPath,
-      gzip: true,
-      workerBlobURL: CONFIG.tesseract.workerBlobURL,
-      // Logger: Tesseract-Fortschritt/Status landet in der Konsole
-      logger: (m) => Ocr.log("Tesseract:", m.status, m.progress != null ? (m.progress * 100).toFixed(0) + "%" : ""),
-      errorHandler: (e) => Ocr.log("Tesseract-Worker-Fehler:", e),
-    });
+    // Sprache wird NICHT von Tesseract gemeldet, wenn mehrere Sprachen in
+    // einem Worker geladen sind. Trick: pro Sprache ein eigener Worker
+    // (parallel initialisiert -> Init-Latenz bleibt ~gleich), dann gewinnt
+    // das Ergebnis mit der hoechsten Konfidenz.
+    const t0 = Date.now();
+    const workers = await Promise.all(langs.map(createOcrWorker));
+    Ocr.log("Worker bereit nach", Date.now() - t0, "ms");
 
-    Ocr.log("Worker initialisiert, starte recognize()");
     try {
-      const ret = await worker.recognize(dataUrl);
-      Ocr.log("recognize() fertig", ret ? "ok" : "leer");
-      return ret && ret.data ? ret.data.text : "";
+      const results = await Promise.all(
+        workers.map((worker, i) => recognizeWith(worker, dataUrl, langs[i]))
+      );
+      // Hoechste Konfidenz gewinnt; bei Gleichstand gewinnt die erste Sprache.
+      const best = results.reduce((a, b) => (b.confidence > a.confidence ? b : a));
+      Ocr.log(
+        "Bestes Ergebnis: Sprache", best.language,
+        "Konfidenz", best.confidence.toFixed(1),
+        "Zeichen", (best.text || "").trim().length
+      );
+      return {
+        text: best.text,
+        confidence: best.confidence,
+        language: languageLabel(best.language),
+      };
     } finally {
-      // Worker immer terminieren, sonst leakt der Web Worker
-      try {
-        await worker.terminate();
-        Ocr.log("Worker terminiert");
-      } catch (termErr) {
-        Ocr.log("Worker-Terminierung fehlgeschlagen:", termErr);
-      }
+      // Worker immer terminieren, sonst leaken die Web Worker
+      await Promise.all(
+        workers.map((worker) =>
+          worker.terminate().catch((termErr) =>
+            Ocr.log("Worker-Terminierung fehlgeschlagen:", termErr)
+          )
+        )
+      );
+      Ocr.log("Worker terminiert");
     }
   }
 
