@@ -1,161 +1,162 @@
 # Local Screen OCR
 
-> Eine lokale Chrome-Erweiterung (Manifest V3), die einen Bildschirmbereich per Maus auswählt, ihn **100 % offline** mit Tesseract.js (WebAssembly) in Text umwandelt und das Ergebnis direkt in die Zwischenablage kopiert.
+> A local Chrome extension (Manifest V3) that lets you select a screen area with the mouse and converts it **100 % offline** into text using Tesseract.js (WebAssembly), copying the result straight to your clipboard.
 
-Keine Cloud. Keine Server. Keine APIs. Keine Telemetrie. Alle Bilddaten verlassen nie dein Gerät.
+No cloud. No servers. No APIs. No telemetry. Image data never leaves your device.
 
 ---
 
 ## ✨ Features
 
-- 🔒 **100 % lokal & offline** – die komplette OCR-Pipeline (WASM-Core + Sprachmodelle) liegt mit in der Erweiterung. Beim Erkennen wird kein einziges Byte ins Netz geschickt.
-- 🖱️ **Einfache Bedienung** – Icon-Klick → Bereich mit der Maus aufziehen → erkannter Text landet in der Zwischenablage.
-- 🌐 **Mehrsprachig** – erkennt **Englisch** und **Deutsch** (Tesseract 4.0.0 LSTM-Modelle). Weitere Sprachen lassen sich durch zusätzliche `traineddata.gz`-Dateien ergänzen.
-- 🖼️ **High-DPI-korrekt** – berücksichtigt `window.devicePixelRatio`, damit Screenshots auf Retina-/4K-Displays scharf und maßstabsgetreu erkannt werden.
-- 🛡️ **Least Privilege** – nur die Berechtigungen `activeTab` + `scripting`. Zugriff auf einen Tab erfolgt ausschließlich nach deinem bewussten Klick (*transient activation*), nie automatisch.
-- 🔐 **Sicher gehärtet** – IIFE-Guard gegen Mehrfach-Injektion, nur `textContent` (kein `innerHTML` → kein DOM-XSS), Blob-Worker-URL umgeht restriktive Seiten-CSP, Dimensions-Limits als DoS-Schutz, defensives Null-Checking.
-- 📋 **Robuste Zwischenablage** – nutzt die asynchrone Clipboard-API mit `execCommand`-Fallback für nicht-sichere Kontexte.
-- 🧪 **Automatisiert getestet** – End-to-End-Test mit Playwright (System-Chrome 152) über `chrome.management.Extensions.loadUnpacked`.
+- 🔒 **100 % local & offline** – the entire OCR pipeline (WASM core + language models) ships with the extension. Not a single byte is sent over the network during recognition.
+- 🖱️ **Easy to use** – click the icon → drag a selection with the mouse → the recognized text lands on your clipboard.
+- 🌐 **Multilingual** – recognizes **English** and **German** (Tesseract 4.0.0 LSTM models). More languages can be added via additional `traineddata.gz` files.
+- 🖼️ **High-DPI correct** – respects `window.devicePixelRatio`, so screenshots on Retina/4K displays are recognized sharply and at the correct scale.
+- 🛡️ **Least privilege** – only the `activeTab` + `scripting` permissions. Tab access happens exclusively after your deliberate click (*transient activation*), never automatically.
+- 🔐 **Security hardened** – IIFE guard against repeated injection, `textContent` only (no `innerHTML` → no DOM XSS), blob worker URL to bypass restrictive page CSP, dimension limits as DoS protection, defensive null checks.
+- 📋 **Robust clipboard** – uses the async Clipboard API with an `execCommand` fallback for non-secure contexts.
+- 🧪 **Automated testing** – end-to-end tests with Playwright (system Chrome 152) via `chrome.management.Extensions.loadUnpacked`.
+
 
 ---
 
-## 🚀 Installation (in Chrome testen)
+## 🚀 Installation (testing in Chrome)
 
-Die Erweiterung ist nicht im Chrome Web Store. Zum Testen als **entpackte Erweiterung** laden:
+The extension is not on the Chrome Web Store. To try it, load it as an **unpacked extension**:
 
-1. Chrome öffnen → `chrome://extensions/` aufrufen.
-2. Oben rechts den **Entwicklermodus** einschalten.
-3. Auf **Entpackte Erweiterung laden** klicken.
-4. Den Ordner [`deploy/`](./deploy) auswählen.
+1. Open Chrome → go to `chrome://extensions/`.
+2. Toggle **Developer mode** in the top right.
+3. Click **Load unpacked**.
+4. Select the [`deploy/`](./deploy) folder.
 
-> Die `deploy/`-Version enthält alle Tesseract-Ressourcen bereits lokal in `deploy/lib/` – sie ist sofort einsatzbereit.
-
----
-
-## 🖱️ Nutzung
-
-1. Auf das **Extension-Icon** in der Toolbar klicken.
-2. Den gewünschten Bereich mit gedrückter linker Maustaste aufziehen.
-3. Der Text wird lokal erkannt und in die **Zwischenablage** kopiert (ein Toast zeigt den Status).
-4. `Esc` bricht die Auswahl jederzeit ab.
-
-Anschließend kannst du den erkannten Text überall mit `Strg`/`Cmd`+`V` einfügen.
+> The `deploy/` version already ships all Tesseract resources locally in `deploy/lib/` – it is ready to use out of the box.
 
 ---
 
-## 🧩 Funktionsweise
+## 🖱️ Usage
+
+1. Click the **extension icon** in the toolbar.
+2. Drag a rectangle around the desired area while holding the left mouse button.
+3. The text is recognized locally and copied to the **clipboard** (a toast shows the status).
+4. `Esc` cancels the selection at any time.
+
+You can then paste the recognized text anywhere with `Ctrl`/`Cmd`+`V`.
+
+---
+
+## 🧩 How It Works
 
 ```
-Icon-Klick ──► background.js
-                 │  Prüfung: Seite injizierbar? (keine chrome://, Web Store …)
+Icon click ──► background.js
+                 │  Check: is the page injectable? (no chrome://, Web Store …)
                  │  Screenshot via chrome.tabs.captureVisibleTab (PNG)
-                 │  Einmalige Injektion von tesseract.min.js + content.js + content.css
+                 │  One-time injection of tesseract.min.js + content.js + content.css
                  ▼
               content.js
-                 │  Canvas-Overlay zur Bereichsauswahl (Maus)
-                 │  Crop inkl. devicePixelRatio
-                 │  Tesseract.js createWorker(["eng","deu"], LSTM)  ◄── offline aus lib/
-                 │  navigator.clipboard.writeText (+ Fallback)
+                 │  Canvas overlay for area selection (mouse)
+                 │  Crop incl. devicePixelRatio
+                 │  Tesseract.js createWorker(["eng","deu"], LSTM)  ◄── offline from lib/
+                 │  navigator.clipboard.writeText (+ fallback)
                  ▼
-              Toast: „Text in Zwischenablage kopiert!“
+              Toast: "Text copied to clipboard!"
 ```
 
 ---
 
-## 🛠️ Tech-Stack
+## 🛠️ Tech Stack
 
-| Komponente           | Version | Zweck                                    |
+| Component            | Version | Purpose                                  |
 |----------------------|---------|------------------------------------------|
-| Chrome Extension     | MV3     | Plattform                                |
-| Tesseract.js         | 5.1.1   | OCR-Hauptbibliothek                      |
-| tesseract.js-core    | 5.1.0   | WASM-Core (SIMD-LSTM)                    |
-| eng.traineddata.gz   | 4.0.0   | Englisch-Modell (LSTM)                   |
-| deu.traineddata.gz   | 4.0.0   | Deutsch-Modell (LSTM)                    |
-| Playwright           | ^1.63   | Automatisierter E2E-Test                 |
+| Chrome Extension     | MV3     | Platform                                 |
+| Tesseract.js         | 5.1.1   | Main OCR library                         |
+| tesseract.js-core    | 5.1.0   | WASM core (SIMD-LSTM)                    |
+| eng.traineddata.gz   | 4.0.0   | English model (LSTM)                     |
+| deu.traineddata.gz   | 4.0.0   | German model (LSTM)                      |
+| Playwright           | ^1.63   | Automated E2E testing                    |
 
 ---
 
-## 📁 Projektstruktur
+## 📁 Project Structure
 
 ```text
 chrome-image-to-text/
-├── deploy/                 ← FERTIGE, testbare Version (Chrome lädt diese)
+├── deploy/                 ← READY-TO-USE, testable version (what Chrome loads)
 │   ├── manifest.json       ← MV3, activeTab + scripting, Web Accessible Resources
-│   ├── background.js       ← Service Worker: Icon-Klick, Screenshot, einmalige Injektion
-│   ├── content.js          ← Overlay/Crop/OCR/Clipboard + Fehlerdiagnose
-│   ├── content.css         ← Overlay- & Toast-Styles
-│   ├── INSTALL.md          ← Chrome-Installationsanleitung
+│   ├── background.js       ← Service worker: icon click, screenshot, one-time injection
+│   ├── content.js          ← Overlay/crop/OCR/clipboard + error diagnostics
+│   ├── content.css         ← Overlay & toast styles
+│   ├── INSTALL.md          ← Chrome installation guide
 │   ├── README.md / report.md / SECURITY_AUDIT.md
-│   └── lib/                ← Tesseract-Ressourcen (offline, ~32 MB)
+│   └── lib/                ← Tesseract resources (offline, ~32 MB)
 │       ├── tesseract.min.js / worker.min.js
 │       ├── tesseract-core-simd-lstm.wasm(.js)
 │       ├── tesseract-core-simd.wasm(.js)
 │       └── eng.traineddata.gz / deu.traineddata.gz
 │
-├── ocr-extension/         ← Quelltext-/Doku-Version (Referenz)
-├── tests/                 ← Playwright-E2E-Tests
-├── chrome_ocr_extension_spec.md   ← Ursprüngliche Spezifikation
-└── PROJECT_KNOWLEDGE.md   ← Zentrale Wissensbasis & Fallstricke
+├── ocr-extension/         ← Source/docs version (reference)
+├── tests/                 ← Playwright E2E tests
+├── chrome_ocr_extension_spec.md   ← Original specification
+└── PROJECT_KNOWLEDGE.md   ← Central knowledge base & pitfalls
 ```
 
 ---
 
 ## 🧪 Tests
 
-End-to-End-Tests mit Playwright gegen den System-Chrome (geladen via
+End-to-end tests with Playwright against the system Chrome (loaded via
 `Extensions.loadUnpacked`):
 
 ```bash
 cd tests
 npm install
-node run2.cjs ./deploy-autotest   # vollständiger E2E-Test
+node run2.cjs ./deploy-autotest   # full E2E test
 ```
 
-Beweis-Outputs: `tests/run2.out.txt` (E2E) und `tests/run3.out.txt` (OCR-Kern).
+Proof outputs: `tests/run2.out.txt` (E2E) and `tests/run3.out.txt` (OCR core).
 
-> Hinweise:
-> - Chrome wird automatisch gesucht (`$env:CHROME_PATH` → Plattform-Standardpfad → Playwright-Bundled-Chromium), siehe `tests/_env.cjs`.
-> - Extension-Pfade werden relativ zum `tests/`-Verzeichnis aufgelöst – keine hartcodierten Pfade.
-
----
-
-## ⚠️ Limitierungen
-
-- **Keine Browser-internen Seiten:** funktioniert nicht auf `chrome://`, `chrome-extension://`, `about:` oder im Chrome Web Store.
-- **Strikte CSP:** Seiten mit sehr restriktiver `worker-src`-CSP können den Tesseract-Web-Worker blockieren. Abgemildert via `workerBlobURL: true`, aber nicht in jedem Fall vermeidbar – ein Fehler-Toast erscheint.
-- **Erstlauf-Ladezeit:** beim ersten OCR-Lauf pro Tab lädt Tesseract die WASM-Core- und Sprachdaten aus `lib/` (lokal, kein Netzwerk) – das kann 1–2 Sekunden dauern.
-- **Nur Englisch & Deutsch** vorkonfiguriert – weitere Sprachen durch zusätzliche `traineddata.gz`-Dateien in `lib/` (und Eintrag im `manifest.json`) möglich.
-- **SIMD vorausgesetzt:** die mitgelieferten Cores nutzen SIMD. Auf CPUs ohne SIMD ggf. die non-SIMD-Varianten (`tesseract-core(-lstm).wasm*`) zusätzlich liefern.
+> Notes:
+> - Chrome is detected automatically (`$env:CHROME_PATH` → platform default paths → Playwright-bundled Chromium), see `tests/_env.cjs`.
+> - Extension paths are resolved relative to the `tests/` directory – no hardcoded paths.
 
 ---
 
-## 🔒 Datenschutz & Sicherheit
+## ⚠️ Limitations
 
-- Es werden **keine** Bilddaten, erkannten Texte, Telemetrie- oder Nutzungsdaten erfasst oder übertragen.
-- Zugriff auf einen Tab erfolgt **nur** nach deinem expliziten Icon-Klick – nie automatisch oder im Hintergrund.
-- Keine dauerhaften Host-Permissions; `activeTab` ist rein transient.
-- Ausführliches Audit mit Bedrohungsmodell und allen behobenen Schwachstellen: [`deploy/SECURITY_AUDIT.md`](./deploy/SECURITY_AUDIT.md).
-
----
-
-## 📜 Lizenz
-
-Bisher ist keine Lizenzdatei hinterlegt. Vor einer Veröffentlichung sollte eine
-Lizenz gewählt werden (z. B. MIT für maximale Offenheit). Tesseract.js und die
-Sprachmodelle stehen unter Apache-2.0 bzw. den jeweiligen Tesseract-Lizenzen.
+- **Browser-internal pages:** does not work on `chrome://`, `chrome-extension://`, `about:`, or the Chrome Web Store.
+- **Strict CSP:** pages with a very restrictive `worker-src` CSP may block the Tesseract web worker. Mitigated via `workerBlobURL: true`, but not always avoidable – an error toast appears.
+- **First-run load time:** on the first OCR run per tab, Tesseract loads the WASM core and language data from `lib/` (local, no network) – this can take 1–2 seconds.
+- **English & German only** preconfigured – more languages are possible via additional `traineddata.gz` files in `lib/` (plus an entry in `manifest.json`).
+- **SIMD assumed:** the bundled cores use SIMD. On CPUs without SIMD, consider also shipping the non-SIMD variants (`tesseract-core(-lstm).wasm*`).
 
 ---
 
-## 🙏 Danksagung
+## 🔒 Privacy & Security
 
-Diese Erweiterung baut auf [Tesseract.js](https://github.com/naptha/tesseract.js) auf, der JavaScript-/WebAssembly-Port von Tesseract OCR. Danke an das gesamte Tesseract- und Tesseract.js-Team.
+- **No** image data, recognized texts, telemetry, or usage data is collected or transmitted.
+- Tab access happens **only** after your explicit icon click – never automatically or in the background.
+- No persistent host permissions; `activeTab` is purely transient.
+- Detailed audit with threat model and all fixed vulnerabilities: [`deploy/SECURITY_AUDIT.md`](./deploy/SECURITY_AUDIT.md).
 
-Die OCR läuft vollständig im Browser über einen **Web-Worker** mit **SIMD-LSTM-Core** von Tesseract.js. Sprach- und Core-Dateien werden per `fetch` aus der Erweiterung selbst geladen (`web_accessible_resources`) – niemals aus dem Netz.
+---
+
+## 📜 License
+
+No license file has been added yet. Before publishing, a license should be
+chosen (e.g. MIT for maximum openness). Tesseract.js and the language models
+are licensed under Apache-2.0 and the respective Tesseract licenses.
+
+---
+
+## 🙏 Acknowledgements
+
+This extension builds on [Tesseract.js](https://github.com/naptha/tesseract.js), the JavaScript/WebAssembly port of Tesseract OCR. Thanks to the entire Tesseract and Tesseract.js team.
+
+The OCR runs entirely in the browser via a **web worker** with Tesseract.js' **SIMD LSTM core**. Language and core files are loaded via `fetch` from the extension itself (`web_accessible_resources`) – never from the network.
 
 ---
 
 ## ☕ Support me
 
-Wenn dir diese Erweiterung hilft, freue ich mich über einen Kaffee:
+If this extension helps you, I'd appreciate a coffee:
 
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-weschkalnies-yellow?logo=buy-me-a-coffee)](https://www.buymeacoffee.com/weschkalnies)
