@@ -11,6 +11,9 @@
   "use strict";
 
   let toastTimer = null;
+  // Zuletzt registrierter Close-Handler – verhindert Listener-Akkumulation,
+  // wenn showToast mehrfach mit allowClose auf demselben Element aufgerufen wird.
+  let lastCloseHandler = null;
 
   /**
    * Shows (or replaces) the status toast.
@@ -44,7 +47,8 @@
 
     // Click dismisses the toast immediately (when allowClose is set)
     const onClickClose = () => {
-      toast.removeEventListener("click", onClickClose);
+      toast.removeEventListener("click", lastCloseHandler);
+      lastCloseHandler = null;
       if (toastTimer) {
         clearTimeout(toastTimer);
         toastTimer = null;
@@ -54,7 +58,11 @@
         if (toast && toast.parentNode) toast.parentNode.removeChild(toast);
       }, 250);
     };
-    if (allowClose) toast.addEventListener("click", onClickClose);
+    if (allowClose) {
+      if (lastCloseHandler) toast.removeEventListener("click", lastCloseHandler);
+      lastCloseHandler = onClickClose;
+      toast.addEventListener("click", onClickClose);
+    }
 
     requestAnimationFrame(() => toast.classList.add("ocr-visible"));
 
@@ -62,7 +70,10 @@
     const ms = duration || (type === "error" ? C.toastErrorMs : C.toastShortMs);
     if (toastTimer) clearTimeout(toastTimer);
     toastTimer = setTimeout(() => {
-      toast.removeEventListener("click", onClickClose);
+      if (lastCloseHandler) {
+        toast.removeEventListener("click", lastCloseHandler);
+        lastCloseHandler = null;
+      }
       toast.classList.remove("ocr-visible");
       setTimeout(() => {
         if (toast && toast.parentNode) toast.parentNode.removeChild(toast);

@@ -1,6 +1,6 @@
 {
   "name": "chrome-image-to-text",
-  "version": "1.0.3",
+  "version": "1.0.7",
   "private": true,
   "description": "Local Screen OCR – Chrome-Erweiterung (Manifest V3), 100% offline. Build: src/ -> deploy/.",
   "scripts": {

@@ -18,6 +18,22 @@
 
 const INJECTED_TABS = new Set();
 
+// Tab-Cleanup zentral (top-level): Service Worker und Listener-Registrierung
+// sind in MV3 ephemeral - daher niemals Listener innerhalb eines Handlers
+// registrieren (wuerde bei jedem Klick einen neuen Listener anlegen).
+chrome.tabs.onRemoved.addListener((tabId) => {
+  INJECTED_TABS.delete(tabId);
+});
+
+// Bei Seitennavigation (reload/link) verlieren bereits injizierte Skripte
+// ihre Wirkung, weil der Seiten-Kontext (inkl. window.__ocrInitialized-Guard)
+// neu aufgebaut wird -> Merker verwerfen, damit neu injiziert werden kann.
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status === "loading") {
+    INJECTED_TABS.delete(tabId);
+  }
+});
+
 /**
  * Prüft, ob eine URL für die Skriptinjektion geeignet ist.
  * Browser-interne Seiten (chrome://, edge://, chrome-extension://, about:)
@@ -86,15 +102,7 @@ chrome.action.onClicked.addListener(async (tab) => {
       console.log("[OCR] Tab bereits injiziert, ueberspringe Injection");
     }
 
-    // 3. Tab-Cleanup, wenn der Tab geschlossen wird
-    chrome.tabs.onRemoved.addListener(function cleanup(tabId) {
-      if (tabId === tab.id) {
-        INJECTED_TABS.delete(tab.id);
-        chrome.tabs.onRemoved.removeListener(cleanup);
-      }
-    });
-
-    // 4. Bilddaten an das Content-Skript übermitteln
+    // 3. Bilddaten an das Content-Skript übermitteln
     await chrome.tabs.sendMessage(tab.id, {
       action: "start_selection",
       imageUri: dataUrl,

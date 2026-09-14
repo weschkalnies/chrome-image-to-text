@@ -350,7 +350,7 @@
     // Sprache nicht sicher unterscheidbar und wird dem Nutzer NICHT
     // angezeigt (verhindert irrefuehrende Angaben bei sprachneutralem Text
     // wie Ziffern oder Latein, das in beiden Sprachen vorkommt).
-    const LANG_UNCERTAINTY_MARGIN = 5;
+    const LANG_UNCERTAINTY_MARGIN = CONFIG.langUncertaintyMargin;
 
     try {
       const results = await Promise.all(
