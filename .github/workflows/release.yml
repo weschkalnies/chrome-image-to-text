@@ -1,46 +1,71 @@
 name: Release
 
+# Läuft bei JEDEM Push auf main und erstellt automatisch das nächste
+# Release (Version = höchster v*-Tag + Patch 1, z. B. v1.0.7 -> v1.0.8).
+# Es wird KEIN Bot-Commit auf main gepusht – nur der Tag wird gesetzt.
+# Dadurch gibt es kein Diverge zwischen local und origin -> keine Rebase-Probleme.
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
   release:
+    # [skip ci]-Commits ignorieren (Sicherheitsnetz; eigene Tag-Pushes
+    # triggern diesen Branch-Workflow ohnehin nicht erneut).
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout (volle Historie, damit alle Tags verfügbar sind)
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Extension aus src/ bauen
-        run: node tools/build.js
-
-      - name: Tag-Version mit manifest.json abgleichen
+      - name: Nächste Version bestimmen (höchster v*-Tag + Patch 1)
+        id: version
         run: |
           set -euo pipefail
-          VERSION=$(jq -r '.version' deploy/manifest.json)
-          TAG="${GITHUB_REF_NAME#v}"
-          echo "Tag=$TAG  Manifest=$VERSION"
-          if [ "$TAG" != "$VERSION" ]; then
-            echo "::error::Tag v$TAG stimmt nicht mit deploy/manifest.json-Version $VERSION überein."
-            exit 1
+          LATEST=$(git tag -l 'v*' --sort=-v:refname | head -n1 || true)
+          if [ -z "$LATEST" ]; then
+            NEW="0.0.1"
+          else
+            BASE="${LATEST#v}"
+            MAJOR=$(echo "$BASE" | cut -d. -f1)
+            MINOR=$(echo "$BASE" | cut -d. -f2)
+            PATCH=$(echo "$BASE" | cut -d. -f3)
+            NEW="$MAJOR.$MINOR.$((PATCH + 1))"
           fi
+          echo "Letzter Tag: ${LATEST:-keiner} -> nächste Version: $NEW"
+          echo "version=$NEW" >> "$GITHUB_OUTPUT"
+          echo "tag=v$NEW" >> "$GITHUB_OUTPUT"
+
+      - name: Extension bauen (src/ -> deploy/)
+        run: node tools/build.js
+
+      - name: Release-Version ins Build eintragen (nur im Artefakt, nicht im Repo)
+        run: |
+          set -euo pipefail
+          jq --arg v "${{ steps.version.outputs.version }}" '.version = $v' \
+            deploy/manifest.json > deploy/manifest.json.tmp \
+            && mv deploy/manifest.json.tmp deploy/manifest.json
+          echo "deploy/manifest.json -> Version ${{ steps.version.outputs.version }}"
 
       - name: Extension zippen (nur Runtime-Dateien)
         run: |
           set -euo pipefail
-          VERSION=$(jq -r '.version' deploy/manifest.json)
+          VERSION="${{ steps.version.outputs.version }}"
           OUT="local-screen-ocr-v${VERSION}.zip"
           (cd deploy && zip -r "../$OUT" . \
             -x 'README.md' 'SECURITY_AUDIT.md' 'PROJECT_KNOWLEDGE.md' 'report.md' 'INSTALL.md')
           echo "ZIP=$OUT" >> "$GITHUB_ENV"
 
-      - name: GitHub Release erstellen
+      - name: GitHub Release + Tag erstellen
         uses: softprops/action-gh-release@v2
         with:
-          name: Release ${{ github.ref_name }}
+          tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Release ${{ steps.version.outputs.tag }}
           generate_release_notes: true
           files: ${{ env.ZIP }}
