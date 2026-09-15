@@ -4,7 +4,7 @@ Eine lokale Chrome-Erweiterung (Manifest V3): Bereich auf dem Bildschirm
 auswählen, mit Tesseract.js offline erkennen, Text prüfen oder bearbeiten und
 anschließend kopieren. Bilddaten und OCR-Ergebnisse verlassen das Gerät nicht.
 
-![Infografik: Bereich auswählen, lokal per OCR erkennen, Text bearbeiten und kopieren](docs/images/ocr-workflow-v2.png)
+![Infografik: Bereich auswählen, lokal per OCR erkennen, Text bearbeiten und kopieren](docs/images/ocr-workflow-v3.png)
 
 ## Funktionen
 
@@ -100,6 +100,11 @@ npm run test:e2e
 Der Projektstand kann anschließend über den Ordner `deploy/` als entpackte
 Erweiterung getestet oder für den jeweiligen Distributionskanal paketiert
 werden.
+
+## Unterstützung
+
+Wenn Du mich unterstützen möchtest, kannst Du mir gern einen Kaffee spendieren:
+[Buy Me a Coffee](https://buymeacoffee.com/weschkalnies).
 
 ## Lizenz
 
