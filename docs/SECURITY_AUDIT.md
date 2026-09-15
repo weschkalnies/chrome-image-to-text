@@ -1,6 +1,7 @@
 # Sicherheits-Audit – Local Screen OCR
 
-Audit der ursprünglichen Spezifikation (`chrome_ocr_extension_spec.md`) und
+Audit der ursprünglichen Spezifikation
+([`chrome_ocr_extension_spec.md`](chrome_ocr_extension_spec.md)) und
 Beschreibung der in dieser Implementierung umgesetzten Maßnahmen.
 
 ## 1. Bedrohungsmodell
@@ -90,6 +91,14 @@ schreibt erkannten Text in die Zwischenablage. Relevante Akteure:
 - **Problem:** Mehrfache `start_selection`-Messages könnten mehrere
   Overlays erzeugen.
 - **Behebung:** `selectionInProgress`-Flag verhindert parallele Overlays.
+
+### 2.12 OCR-Text im Webseiten-DOM wäre auslesbar
+- **Problem:** Ein normales `textarea` im gemeinsamen DOM kann von Skripten
+  der besuchten Webseite gelesen werden. Das wäre besonders für OCR von
+  vertraulichen Bildschirminhalten ein unnötiges Datenleck.
+- **Behebung:** Der editierbare Ergebnisdialog verwendet einen geschlossenen
+  Shadow-DOM. Die Webseite kann den Dialog-Host sehen, aber weder den
+  erkannten Text noch die Bedienoberfläche auslesen.
 
 ## 3. Berechtigungs-Minimierung (Least Privilege)
 

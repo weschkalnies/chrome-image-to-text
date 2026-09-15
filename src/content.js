@@ -32,9 +32,13 @@
      Guard: Helper-Module muessen VOR diesem Skript injiziert worden sein.
      Fehlt der gemeinsame Ocr-Namespace, ist hier Schluss (klare Diagnose).
      --------------------------------------------------------------------- */
-  if (!window.Ocr || typeof Ocr.Config !== "object") {
+  if (
+    !window.Ocr ||
+    typeof Ocr.Config !== "object" ||
+    typeof Ocr.Result !== "object"
+  ) {
     console.error(
-      "[OCR] Helper-Module fehlen (lib/ocr/config|toast|logger|clipboard.js). " +
+        "[OCR] Helper-Module fehlen (lib/ocr/config|toast|logger|clipboard|ui/result.js). " +
         "Bitte Injection-Reihenfolge in background.js pruefen."
     );
     return;
@@ -128,7 +132,8 @@
   }
 
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && cancelActiveOcr()) {
+    if (event.key !== "Escape") return;
+    if (cancelActiveOcr() || Ocr.Result.close()) {
       event.preventDefault();
     }
   });
@@ -188,6 +193,7 @@
         );
         return;
       }
+      Ocr.Result.close();
       initSelection(message.imageUri);
     }
   });
@@ -271,7 +277,7 @@
           Ocr.showError("OCR", new Error("Screenshot wurde noch nicht dekodiert, als die Auswahl endete."));
           return;
         }
-        runOcr(img, rect);
+        runOcr(img, rect, imageUri);
       }
     }
 
@@ -368,7 +374,7 @@
      OCR
      --------------------------------------------------------------------- */
 
-  async function runOcr(img, rect) {
+  async function runOcr(img, rect, imageUri) {
     if (ocrInProgress) {
       Ocr.log("OCR-Start abgewiesen: OCR laeuft bereits");
       return;
@@ -396,21 +402,29 @@
       const trimmed = (result.text || "").trim();
 
       if (trimmed) {
-        const copied = await Ocr.copyToClipboard(trimmed);
-        // Detail-Zeile: Zeichenzahl, ggf. Sprache (nur wenn eindeutig), Konfidenz
         let details = trimmed.length + " Zeichen";
         if (result.language) {
           details += " · " + result.language;
         }
         details += " (Konfidenz " + Math.round(result.confidence) + "%)";
-        Ocr.showToast(
-          (copied
-            ? "Text in Zwischenablage kopiert!"
-            : "Text erkannt, aber Zwischenablage nicht verfuegbar (siehe Konsole).") +
-            "\n" + details,
-          copied ? "success" : "error"
-        );
-        Ocr.log("OCR fertig,", details, "kopiert:", copied);
+        Ocr.Result.show({
+          text: trimmed,
+          confidence: result.confidence,
+          language: result.language,
+          onCopy: async (editedText) => {
+            const copied = await Ocr.copyToClipboard(editedText);
+            Ocr.showToast(
+              copied
+                ? "Text in Zwischenablage kopiert!"
+                : "Text erkannt, aber Zwischenablage nicht verfuegbar (siehe Konsole).",
+              copied ? "success" : "error"
+            );
+            Ocr.log("OCR-Ergebnis kopiert:", copied, "Zeichen:", editedText.length);
+            return copied;
+          },
+          onReselect: () => initSelection(imageUri),
+        });
+        Ocr.log("OCR fertig, Ergebnis angezeigt:", details);
       } else {
         Ocr.showToast("Kein Text erkannt.", "error");
         Ocr.log("OCR fertig, kein Text");

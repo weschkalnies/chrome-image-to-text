@@ -26,7 +26,7 @@ eingetragen, damit sie aus dem Content-Skript geladen werden können.
 ## Update-Prozedur
 
 1. Versionen exakt notieren (siehe Tabelle oben, ABI/API-Risiko).
-2. Neue Dateien von jsDelivr/unpkg beziehen und hier ersetzen.
+2. Neue Dateien von jsDelivr/unpkg beziehen und in `src/lib/` ersetzen.
 3. `manifest.json` (`web_accessible_resources`) bei Bedarf ergänzen.
 4. Build + E2E-Test ausführen (`npm run build && npm run test:e2e`).
 

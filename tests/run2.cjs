@@ -124,6 +124,39 @@ async function waitForFinalToast(page, timeoutMs) {
   throw new Error("Kein erfolgreicher OCR-Toast innerhalb von " + timeoutMs + " ms.");
 }
 
+function findNodeByText(node, nodeName, text) {
+  if (
+    node.nodeName === nodeName &&
+    (node.children || []).some((child) => child.nodeName === "#text" && child.nodeValue === text)
+  ) {
+    return node.nodeId;
+  }
+  for (const key of ["children", "shadowRoots", "pseudoElements"]) {
+    for (const child of node[key] || []) {
+      const found = findNodeByText(child, nodeName, text);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+async function clickClosedShadowButton(context, page, label) {
+  const session = await context.newCDPSession(page);
+  try {
+    await session.send("DOM.enable");
+    const { root } = await session.send("DOM.getDocument", { depth: -1, pierce: true });
+    const nodeId = findNodeByText(root, "BUTTON", label);
+    assert(nodeId, "Button im geschlossenen Ergebnis-Shadow-DOM fehlt: " + label);
+    const { model } = await session.send("DOM.getBoxModel", { nodeId });
+    const quad = model.content;
+    const x = (quad[0] + quad[2] + quad[4] + quad[6]) / 4;
+    const y = (quad[1] + quad[3] + quad[5] + quad[7]) / 4;
+    await page.mouse.click(x, y);
+  } finally {
+    await session.detach();
+  }
+}
+
 const logs = [];
 const log = (message) => {
   logs.push(message);
@@ -196,6 +229,7 @@ const log = (message) => {
           "lib/ocr/toast.js",
           "lib/ocr/logger.js",
           "lib/ocr/clipboard.js",
+          "lib/ui/result.js",
           "content.js",
         ],
       });
@@ -216,7 +250,19 @@ const log = (message) => {
     await page.mouse.up();
     log("Auswahl gezogen (" + x1 + "," + y1 + ")->(" + x2 + "," + y2 + ")");
 
-    const toast = await waitForFinalToast(page, 45000);
+    await page.waitForSelector("#ocr-result-host", { state: "attached", timeout: 45000 });
+    const resultPrivacy = await page.evaluate(() => {
+      const host = document.querySelector("#ocr-result-host");
+      return {
+        hasOpenShadowRoot: Boolean(host && host.shadowRoot),
+        pageText: host ? host.textContent : "",
+      };
+    });
+    assert(!resultPrivacy.hasOpenShadowRoot, "Das OCR-Ergebnis darf keinen offenen Shadow-DOM verwenden.");
+    assert(!resultPrivacy.pageText.includes(EXPECTED_TEXT), "Das OCR-Ergebnis ist im Seiten-DOM lesbar.");
+
+    await clickClosedShadowButton(context, page, "Kopieren");
+    const toast = await waitForFinalToast(page, 5000);
     const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
     assert(
       normalizeText(clipboardText) === EXPECTED_TEXT,

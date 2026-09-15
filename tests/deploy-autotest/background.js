@@ -26,6 +26,7 @@ const CONTENT_SCRIPT_FILES = [
   "lib/ocr/toast.js",
   "lib/ocr/logger.js",
   "lib/ocr/clipboard.js",
+  "lib/ui/result.js",
   "content.js",
 ];
 

@@ -19,8 +19,6 @@ const ROOT = path.resolve(__dirname, "..");
 const SRC = path.join(ROOT, "src");
 const DEPLOY = path.join(ROOT, "deploy");
 const AUTOTEST = path.join(ROOT, "tests", "deploy-autotest");
-const KNOWLEDGE_SRC = path.join(ROOT, "docs", "project_overview.md");
-const KNOWLEDGE_DEST = "PROJECT_KNOWLEDGE.md";
 
 /** Rekursives Kopieren (Dateien + Unterordner). */
 function copyDir(srcDir, destDir) {
@@ -45,11 +43,6 @@ function buildDeploy() {
   }
   rmRf(DEPLOY);
   copyDir(SRC, DEPLOY);
-  // Wissensbasis mitliefern (falls vorhanden), damit deploy/ auch standalone
-  // den Projekt-Kontext enthaelt (siehe docs/project_overview.md).
-  if (fs.existsSync(KNOWLEDGE_SRC)) {
-    fs.copyFileSync(KNOWLEDGE_SRC, path.join(DEPLOY, KNOWLEDGE_DEST));
-  }
 }
 
 /** tests/deploy-autotest/ = deploy/ + host_permissions <all_urls>. */
@@ -78,9 +71,6 @@ function checkSync() {
     const tmpTarget = path.join(tmp, "deploy");
     rmRf(tmpTarget);
     copyDir(SRC, tmpTarget);
-    if (fs.existsSync(KNOWLEDGE_SRC)) {
-      fs.copyFileSync(KNOWLEDGE_SRC, path.join(tmpTarget, KNOWLEDGE_DEST));
-    }
 
     /** Rekursives Auflisten relativer Pfade. */
     function listFiles(dir, base) {

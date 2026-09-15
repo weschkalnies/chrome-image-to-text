@@ -2,7 +2,7 @@
 
 Lokale, **100% offline** arbeitende Chrome-Erweiterung (Manifest V3), die per
 Klick auf das Icon einen Bildschirmbereich auswählt, diesen mit **Tesseract.js
-(WebAssembly)** in Text umwandelt und das Ergebnis in die Zwischenablage kopiert.
+(WebAssembly)** in Text umwandelt und ihn vor dem Kopieren editierbar anzeigt.
 
 Es werden **keine** Cloud-Dienste, Server oder APIs verwendet. Alle Bilddaten
 verbleiben auf dem Endgerät.
@@ -19,8 +19,8 @@ chrome-image-to-text/
 │   ├── icons/             # Extension-Icons
 │   └── lib/
 │       ├── ocr/           # Helper-Module (config, toast, logger, clipboard)
+│       ├── ui/result.js   # geschützter, editierbarer Ergebnisdialog
 │       ├── tesseract.min.js … # lokale Tesseract.js-Ressourcen (Vendor)
-│       └── README.md      # Herkunft & Update-Prozedur der Vendor-Dateien
 ├── deploy/                ← GENERIERT (npm run build) – in Chrome laden
 ├── tools/build.js         # Build-Skript (src → deploy, --autotest, --check)
 ├── tests/                 # Playwright-E2E-Harness (run2.cjs / run3.cjs)
@@ -48,9 +48,12 @@ npm run test:e2e     # erzeugt die Test-Extension und prüft den vollständigen 
 
 1. Auf das Extension-Icon klicken.
 2. Den gewünschten Bereich mit gedrückter linker Maustaste aufziehen.
-3. Text wird lokal erkannt und in die Zwischenablage kopiert.
-4. `Esc` bricht die Auswahl ab.
+3. Den erkannten Text im Ergebnisdialog prüfen oder bearbeiten.
+4. **Kopieren** wählen; **Auswahl wiederholen** verwendet denselben Screenshot.
+5. `Esc` bricht eine Auswahl ab oder schließt den Ergebnisdialog.
 
 ## Sicherheit
 
-Siehe [`SECURITY_AUDIT.md`](./SECURITY_AUDIT.md).
+Die Erweiterung arbeitet lokal und benötigt nur `activeTab` und `scripting`.
+Das vollständige Sicherheits-Audit liegt in der Entwicklerdokumentation des
+Repositorys unter `docs/`.

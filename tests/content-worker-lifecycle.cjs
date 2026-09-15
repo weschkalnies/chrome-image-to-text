@@ -66,6 +66,7 @@ const MOCKS = `
     showError(context, error) {
       window.__ocrEvents.push(["error", context + ": " + (error && error.message)]);
     },
+    Result: { show() { return true; }, close() { return false; } },
     checkTesseractLoaded() { return true; },
     async copyToClipboard() { return true; }
   };
