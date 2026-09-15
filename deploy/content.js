@@ -4,7 +4,7 @@
  * Verwaltet:
  *  - das Canvas-Overlay zur Bereichsauswahl mit der Maus
  *  - ESC-Abbruch
- *  - das exakte Zuschneiden des Screenshots (inkl. devicePixelRatio)
+ *  - das exakte Zuschneiden des Screenshots anhand seiner realen Aufloesung
  *  - die lokale OCR-Erkennung via Tesseract.js (offline)
  *
  * Querschnittsfunktionen liegen als Helper-Module unter lib/ocr/ und werden
@@ -137,8 +137,20 @@
      Message-Listener
      --------------------------------------------------------------------- */
 
-  chrome.runtime.onMessage.addListener((message) => {
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (!message) return;
+
+    // Der Background-Service-Worker ist in MV3 nicht persistent. Dieser Ping
+    // ersetzt einen fluechtigen "bereits injiziert"-Cache nach Neustarts.
+    if (message.action === "ocr_ping") {
+      sendResponse({
+        ready:
+          window.__ocrInitialized === true &&
+          typeof window.Tesseract === "object" &&
+          typeof window.Ocr === "object",
+      });
+      return;
+    }
 
     if (message.action === "cancel_ocr") {
       cancelActiveOcr();
@@ -304,16 +316,30 @@
   }
 
   /* -----------------------------------------------------------------------
-     Bild zuschneiden (mit devicePixelRatio)
+     Bild zuschneiden (anhand der Screenshot-Aufloesung)
      --------------------------------------------------------------------- */
 
   function cropImage(img, x, y, w, h) {
-    const dpr = window.devicePixelRatio || 1;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    if (
+      !Number.isFinite(viewportWidth) || viewportWidth <= 0 ||
+      !Number.isFinite(viewportHeight) || viewportHeight <= 0 ||
+      !img.naturalWidth || !img.naturalHeight
+    ) {
+      throw new Error("Screenshot- oder Viewport-Abmessungen sind ungueltig.");
+    }
 
-    const srcX = Math.round(x * dpr);
-    const srcY = Math.round(y * dpr);
-    const srcW = Math.round(w * dpr);
-    const srcH = Math.round(h * dpr);
+    // captureVisibleTab() kann eine andere physische Aufloesung als die
+    // CSS-Pixel des Tabs haben. Die reale Bildgroesse ist deshalb die
+    // verlaessliche Quelle; X und Y werden separat skaliert, weil Screenshots
+    // auch nicht-proportional vom Viewport abweichen koennen.
+    const scaleX = img.naturalWidth / viewportWidth;
+    const scaleY = img.naturalHeight / viewportHeight;
+    const srcX = Math.round(x * scaleX);
+    const srcY = Math.round(y * scaleY);
+    const srcW = Math.round(w * scaleX);
+    const srcH = Math.round(h * scaleY);
 
     // DoS-Schutz: extrem grosse Crops ablehnen
     if (srcW * srcH > CONFIG.maxCropPixels) {
@@ -331,7 +357,8 @@
     const ctx = cropCanvas.getContext("2d");
     if (!ctx) throw new Error("Canvas-Kontext nicht verfuegbar.");
 
-    // Physische Aufloesung fuer bestmoegliche OCR-Genauigkeit beibehalten
+    // Physische Screenshot-Aufloesung fuer bestmoegliche OCR-Genauigkeit
+    // beibehalten.
     ctx.drawImage(img, srcX, srcY, clampedW, clampedH, 0, 0, clampedW, clampedH);
 
     return cropCanvas.toDataURL("image/png");

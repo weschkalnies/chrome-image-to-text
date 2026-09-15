@@ -5,7 +5,7 @@
  *  - Klick auf das Extension-Icon abfangen
  *  - Sicherheitsprüfung des aktiven Tabs (keine Browser-internen Seiten)
  *  - Screenshot des sichtbaren Fensters erstellen
- *  - Content-Skript + Tesseract genau einmal pro Tab injizieren
+ *  - Content-Skript + Tesseract race-sicher pro Tab injizieren
  *  - Bilddaten an das Content-Skript senden
  *
  * Sicherheitshinweis:
@@ -16,23 +16,78 @@
  *    defensiv auf undefined.
  */
 
-const INJECTED_TABS = new Set();
+// MV3-Service-Worker können jederzeit beendet werden. Ein Set mit zuvor
+// injizierten Tabs wäre deshalb nach einem Neustart falsch. Diese Map lebt
+// nur während einer laufenden Injektion und verhindert parallele Klicks.
+const INJECTION_PROMISES = new Map();
+const CONTENT_SCRIPT_FILES = [
+  "lib/tesseract.min.js",
+  "lib/ocr/config.js",
+  "lib/ocr/toast.js",
+  "lib/ocr/logger.js",
+  "lib/ocr/clipboard.js",
+  "content.js",
+];
 
-// Tab-Cleanup zentral (top-level): Service Worker und Listener-Registrierung
-// sind in MV3 ephemeral - daher niemals Listener innerhalb eines Handlers
-// registrieren (wuerde bei jedem Klick einen neuen Listener anlegen).
-chrome.tabs.onRemoved.addListener((tabId) => {
-  INJECTED_TABS.delete(tabId);
-});
-
-// Bei Seitennavigation (reload/link) verlieren bereits injizierte Skripte
-// ihre Wirkung, weil der Seiten-Kontext (inkl. window.__ocrInitialized-Guard)
-// neu aufgebaut wird -> Merker verwerfen, damit neu injiziert werden kann.
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (changeInfo.status === "loading") {
-    INJECTED_TABS.delete(tabId);
+async function isOcrContentScriptReady(tabId) {
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, { action: "ocr_ping" });
+    return response && response.ready === true;
+  } catch (error) {
+    // Bei einer frischen Seite gibt es noch keinen Empfänger. Das ist der
+    // erwartete Fall vor der ersten Injektion, kein Nutzerfehler.
+    return false;
   }
-});
+}
+
+async function injectOcrContentScript(tabId) {
+  console.log("[OCR] Injiziere tesseract.min.js + lib/ocr/* + content.js in Tab", tabId);
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    files: CONTENT_SCRIPT_FILES,
+  });
+  await chrome.scripting.insertCSS({
+    target: { tabId },
+    files: ["content.css"],
+  });
+
+  if (!await isOcrContentScriptReady(tabId)) {
+    throw new Error("Content-Skript antwortet nach der Injektion nicht.");
+  }
+  console.log("[OCR] Injection abgeschlossen");
+}
+
+/**
+ * Stellt sicher, dass genau eine Injektion pro Tab gleichzeitig stattfindet.
+ * Nach einem Service-Worker-Neustart erkennt der Ping ein bereits lebendes
+ * Content-Skript im Tab, ohne einen nicht persistenten Cache zu benötigen.
+ */
+async function ensureOcrContentScript(tabId) {
+  const inFlight = INJECTION_PROMISES.get(tabId);
+  if (inFlight) {
+    console.log("[OCR] Warte auf laufende Injection in Tab", tabId);
+    return inFlight;
+  }
+
+  const operation = (async () => {
+    if (await isOcrContentScriptReady(tabId)) {
+      console.log("[OCR] Content-Skript antwortet bereits, ueberspringe Injection");
+      return;
+    }
+    await injectOcrContentScript(tabId);
+  })();
+  INJECTION_PROMISES.set(tabId, operation);
+
+  try {
+    await operation;
+  } finally {
+    // Nur den eigenen Eintrag löschen; eine spätere Operation darf nicht
+    // versehentlich entfernt werden.
+    if (INJECTION_PROMISES.get(tabId) === operation) {
+      INJECTION_PROMISES.delete(tabId);
+    }
+  }
+}
 
 /**
  * Prüft, ob eine URL für die Skriptinjektion geeignet ist.
@@ -75,32 +130,9 @@ chrome.action.onClicked.addListener(async (tab) => {
     }
     console.log("[OCR] Screenshot erstellt, Laenge", dataUrl.length);
 
-    // 2. Skripte genau einmal pro Tab injizieren (verhindert Duplikate & Race-Conditions)
-    //    Reihenfolge ist relevant: tesseract.min.js (global Tesseract),
-    //    dann die Helper-Module (Namespace self.Ocr), dann content.js,
-    //    das auf beides zugreift.
-    if (!INJECTED_TABS.has(tab.id)) {
-      console.log("[OCR] Injiziere tesseract.min.js + lib/ocr/* + content.js in Tab", tab.id);
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: [
-          "lib/tesseract.min.js",
-          "lib/ocr/config.js",
-          "lib/ocr/toast.js",
-          "lib/ocr/logger.js",
-          "lib/ocr/clipboard.js",
-          "content.js",
-        ],
-      });
-      await chrome.scripting.insertCSS({
-        target: { tabId: tab.id },
-        files: ["content.css"],
-      });
-      INJECTED_TABS.add(tab.id);
-      console.log("[OCR] Injection abgeschlossen");
-    } else {
-      console.log("[OCR] Tab bereits injiziert, ueberspringe Injection");
-    }
+    // 2. Die Injektion wird pro Tab zusammengeführt. Die genaue Reihenfolge
+    //    der Dateien liegt in CONTENT_SCRIPT_FILES und ist relevant.
+    await ensureOcrContentScript(tab.id);
 
     // 3. Bilddaten an das Content-Skript übermitteln
     await chrome.tabs.sendMessage(tab.id, {

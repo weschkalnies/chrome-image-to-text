@@ -32,14 +32,19 @@ schreibt erkannten Text in die Zwischenablage. Relevante Akteure:
 - **Behebung:** WAR wird ausschließlich für die Tesseract-Sub-Ressourcen
   deklariert, die für offline-OCR wirklich nötig sind. `<all_urls>` bleibt
   erforderlich, weil `activeTab` auf jeder Nutzer-seite arbeiten muss.
-
-### 2.3 Mehrfach-Injektion bei jedem Icon-Klick
+  `use_dynamic_url` darf hier nicht gesetzt werden: Der Tesseract-Blob-Worker
+  lädt den Core über die statische URL aus `chrome.runtime.getURL()`. Die
+  statischen Ressourcen sind deshalb bewusst der dokumentierte
+  Fingerprinting-Trade-off.
+### 2.3 Mehrfach-Injektion bei Icon-Klicks und MV3-Neustarts
 - **Problem:** Spec injiziert `tesseract.min.js` + `content.js` bei **jedem**
-  Klick neu. Das bläht den Speicher auf und kann zu Race-Conditions führen.
-- **Behebung:** Background-Worker merkt sich injizierte Tabs in einem `Set`
-  (`INJECTED_TABS`) und injiziert nur einmal pro Tab. Beim Tab-Schließen wird
-  der Eintrag bereinigt. Das Content-Skript hat zusätzlich einen
-  `__ocrInitialized`-Guard.
+  Klick neu. Ein prozesslokales `Set` hilft bei parallelen Klicks nicht und
+  verliert seinen Zustand, wenn der MV3-Service-Worker neu gestartet wird.
+- **Behebung:** `INJECTION_PROMISES` führt gleichzeitige Injektionen pro Tab
+  zusammen. Vor jeder neuen Injektion fragt ein `ocr_ping` das lebende
+  Content-Skript ab; dadurch bleibt es auch nach einem Service-Worker-Neustart
+  bei genau einer Injektion. Der `__ocrInitialized`-Guard bleibt als zweite
+  Schutzschicht erhalten.
 
 ### 2.4 Toast mit `duration = 0` bleibt dauerhaft sichtbar (Bug)
 - **Problem:** `showToast("Erkenne Text …")` ohne Duration → Toast bleibt

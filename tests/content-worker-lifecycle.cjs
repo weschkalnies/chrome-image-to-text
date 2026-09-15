@@ -18,6 +18,11 @@ const CONTENT_SCRIPT = fs.readFileSync(path.join(ROOT, "src", "content.js"), "ut
 const CONTENT_CSS = fs.readFileSync(path.join(ROOT, "src", "content.css"), "utf8");
 const TEST_IMAGE =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL9WAAAAABJRU5ErkJggg==";
+const SCALE_TEST_IMAGE =
+  "data:image/svg+xml;base64," +
+  Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="white"/></svg>'
+  ).toString("base64");
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -37,6 +42,12 @@ const MOCKS = `
   window.__ocrWorkers = [];
   window.__ocrMode = "partial-failure";
   window.__ocrListener = null;
+  window.__cropDraws = [];
+  const originalDrawImage = CanvasRenderingContext2D.prototype.drawImage;
+  CanvasRenderingContext2D.prototype.drawImage = function (...args) {
+    if (args.length === 9) window.__cropDraws.push(args.slice(1));
+    return originalDrawImage.apply(this, args);
+  };
   window.chrome = {
     runtime: {
       onMessage: { addListener(listener) { window.__ocrListener = listener; } }
@@ -82,16 +93,16 @@ const MOCKS = `
   };
 `;
 
-async function startSelection(page) {
+async function startSelection(page, imageUri = TEST_IMAGE, start = { x: 1, y: 1 }, end = { x: 10, y: 10 }) {
   await page.evaluate((imageUri) => {
     window.__ocrListener({ action: "start_selection", imageUri });
-  }, TEST_IMAGE);
+  }, imageUri);
   await page.waitForSelector("#ocr-overlay-canvas", { timeout: 1000 });
   // Das kleine data:-Bild muss erst dekodiert sein, bevor mouseup OCR startet.
   await page.waitForTimeout(50);
-  await page.mouse.move(1, 1);
+  await page.mouse.move(start.x, start.y);
   await page.mouse.down();
-  await page.mouse.move(10, 10);
+  await page.mouse.move(end.x, end.y);
   await page.mouse.up();
 }
 
@@ -108,7 +119,12 @@ async function startSelection(page) {
     await page.addScriptTag({ content: MOCKS });
     await page.addScriptTag({ content: CONTENT_SCRIPT });
 
-    await startSelection(page);
+    await startSelection(
+      page,
+      SCALE_TEST_IMAGE,
+      { x: 10, y: 20 },
+      { x: 50, y: 60 }
+    );
     await waitFor(
       page,
       () => window.__ocrEvents.some((event) => event[0] === "error"),
@@ -117,6 +133,7 @@ async function startSelection(page) {
     const partialFailure = await page.evaluate(() => ({
       engWorker: window.__ocrWorkers.find((worker) => worker.language === "eng"),
       canvasCount: document.querySelectorAll("#ocr-overlay-canvas").length,
+      cropDraw: window.__cropDraws[0],
     }));
     assert(partialFailure.engWorker, "Der erste Worker wurde nicht erzeugt.");
     assert(
@@ -124,6 +141,10 @@ async function startSelection(page) {
       "Der bei Teilfehler gestartete Worker wurde nicht genau einmal terminiert."
     );
     assert(partialFailure.canvasCount === 0, "Das Overlay blieb nach der Auswahl bestehen.");
+    assert(
+      JSON.stringify(partialFailure.cropDraw) === JSON.stringify([40, 60, 160, 120, 0, 0, 160, 120]),
+      "Der Crop wurde nicht anhand der realen Screenshot-Aufloesung skaliert."
+    );
 
     await page.evaluate(() => {
       window.__ocrMode = "wait-for-cancel";

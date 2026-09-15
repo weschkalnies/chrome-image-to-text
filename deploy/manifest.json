@@ -10,18 +10,18 @@
   "action": {
     "default_title": "Screenshot OCR starten",
     "default_icon": {
-      "16": "icons/icon16.png",
-      "32": "icons/icon32.png",
-      "48": "icons/icon48.png"
+      "16": "icons/icon16-v2.png",
+      "32": "icons/icon32-v2.png",
+      "48": "icons/icon48-v2.png"
     }
   },
   "icons": {
-    "16": "icons/icon16.png",
-    "32": "icons/icon32.png",
-    "48": "icons/icon48.png",
-    "64": "icons/icon64.png",
-    "128": "icons/icon128.png",
-    "256": "icons/icon256.png"
+    "16": "icons/icon16-v2.png",
+    "32": "icons/icon32-v2.png",
+    "48": "icons/icon48-v2.png",
+    "64": "icons/icon64-v2.png",
+    "128": "icons/icon128-v2.png",
+    "256": "icons/icon256-v2.png"
   },
   "background": {
     "service_worker": "background.js"
@@ -40,8 +40,7 @@
       ],
       "matches": [
         "<all_urls>"
-      ],
-      "use_dynamic_url": true
+      ]
     }
   ]
 }

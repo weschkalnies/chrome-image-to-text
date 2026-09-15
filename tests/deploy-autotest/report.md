@@ -16,7 +16,7 @@ Implementiert unter `.\ocr-extension\`:
 ocr-extension/
 ├── manifest.json        # MV3, nur activeTab + scripting (Least Privilege)
 ├── background.js        # Service Worker: Icon-Klick, Screenshot, einmalige Injection
-├── content.js           # Overlay-Auswahl, Crop (DPR), OCR, Clipboard (+Fallback)
+├── content.js           # Overlay-Auswahl, Crop (reale Bildskalierung), OCR, Clipboard (+Fallback)
 ├── content.css          # Overlay- & Toast-Styles
 ├── README.md            # Installation & Nutzung
 ├── SECURITY_AUDIT.md    # Vollständiger Sicherheits-Audit
@@ -35,7 +35,7 @@ behoben wurden (Detail-Dokumentation in `SECURITY_AUDIT.md`):
 |---|----------------------------------------------------|---------------------------------------------------------------------------|
 | 1 | `tab.url.startsWith()` ohne null-Check → TypeError | `isInjectableUrl()` prüft defensiv, blockiert weitere interne Schemata    |
 | 2 | WAR unvollständig → **funktional blockiert** (Worker/Core/Lang fehlen) | WAR nur für die wirklich nötigen Tesseract-Sub-Ressourcen |
-| 3 | Skript-Injection bei jedem Klick (Speicher/Race)   | `INJECTED_TABS`-Set + `__ocrInitialized`-Guard, Cleanup bei Tab-Schließen |
+| 3 | Skript-Injection bei Klicks/MV3-Neustarts (Speicher/Race) | Promise-Lock pro Tab + `ocr_ping` + `__ocrInitialized`-Guard |
 | 4 | Toast `duration=0` bleibt ewig sichtbar (Bug)      | Default-Dauer + sauberes DOM-Removal                                       |
 | 5 | DOM-XSS-Risiko                                     | konsequent `textContent`, nie `innerHTML`                                  |
 | 6 | Kein Abbruch möglich                               | `Esc` entfernt Overlay + Listener                                          |
@@ -158,11 +158,9 @@ in die Zwischenablage kopiert.
 
 ### Hinweis zu Test-Artefakten
 
-- `captureVisibleTab` erfasst im automatisierten Headed-Modus die physische
-  Display-Aufloesung (2x), waehrend `window.devicePixelRatio` per Playwright
-  auf 1 steht. Im Test wurde dies per `Emulation.setDeviceMetricsOverride`
-  (deviceScaleFactor=2) angleichen. Bei echten Nutzern stimmen beide
-  Skalierungen ueberein (kein Eingriff noetig).
+- `captureVisibleTab` kann eine andere physische Aufloesung als der CSS-Viewport
+  liefern. Der Crop skaliert deshalb anhand von `naturalWidth / innerWidth`
+  und `naturalHeight / innerHeight`, nicht anhand von `devicePixelRatio`.
 - Die zusaetzlichen `host_permissions` im Test-Manifest sind **nur** fuer die
   Automatisierung (da kein echter Icon-Klick = kein `activeTab`). Das
   ausgelieferte `deploy/manifest.json` bleibt bei `activeTab` + `scripting`
