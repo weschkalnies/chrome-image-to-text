@@ -7,6 +7,7 @@
     "build": "node tools/build.js",
     "build:autotest": "node tools/build.js --autotest",
     "check": "node tools/build.js --check",
-    "test:e2e": "node tests/run2.cjs"
+    "test:worker-lifecycle": "node tests/content-worker-lifecycle.cjs",
+    "test:e2e": "npm run build:autotest && node tests/run2.cjs tests/deploy-autotest"
   }
 }

@@ -49,17 +49,111 @@
 
   let activeOverlay = null; // aktuelles canvas-Element
   let selectionInProgress = false;
+  let activeOcrOperation = null;
+  let ocrInProgress = false;
+
+  function createOcrAbortError() {
+    const error = new Error("Texterkennung wurde abgebrochen.");
+    error.name = "OcrAbortError";
+    return error;
+  }
+
+  function isOcrAbortError(error) {
+    return error && error.name === "OcrAbortError";
+  }
+
+  /**
+   * Verwaltet alle Worker einer OCR-Ausfuehrung. Worker werden direkt nach
+   * ihrer asynchronen Erstellung registriert; damit kann auch eine teilweise
+   * fehlgeschlagene parallele Initialisierung vollstaendig aufgeraeumt werden.
+   */
+  function createOcrOperation() {
+    let cancelled = false;
+    let rejectCancellation;
+    const workers = new Set();
+    const terminations = new Map();
+    const cancellation = new Promise((resolve, reject) => {
+      rejectCancellation = reject;
+    });
+    // Der Handler verhindert eine unbehandelte Rejection, falls der Abbruch
+    // genau zwischen zwei asynchronen OCR-Schritten angefordert wird.
+    cancellation.catch(() => {});
+
+    function terminateWorker(worker) {
+      if (terminations.has(worker)) return terminations.get(worker);
+      const termination = Promise.resolve()
+        .then(() => worker.terminate())
+        .catch((termErr) =>
+          Ocr.log("Worker-Terminierung fehlgeschlagen:", termErr)
+        );
+      terminations.set(worker, termination);
+      return termination;
+    }
+
+    async function terminateWorkers() {
+      await Promise.all(Array.from(workers, terminateWorker));
+    }
+
+    return {
+      get cancelled() {
+        return cancelled;
+      },
+      cancellation,
+      registerWorker(worker) {
+        workers.add(worker);
+        // Falls der Worker erst nach einem Abbruch fertig initialisiert wird,
+        // darf er nicht unbemerkt weiterlaufen.
+        if (cancelled) void terminateWorker(worker);
+      },
+      abort() {
+        if (cancelled) return;
+        cancelled = true;
+        rejectCancellation(createOcrAbortError());
+        void terminateWorkers();
+      },
+      terminateWorkers,
+    };
+  }
+
+  function waitForOcrStep(promise, operation) {
+    return Promise.race([promise, operation.cancellation]);
+  }
+
+  function cancelActiveOcr() {
+    if (!activeOcrOperation) return false;
+    Ocr.log("OCR-Abbruch angefordert");
+    activeOcrOperation.abort();
+    Ocr.showToast("Texterkennung wird abgebrochen …");
+    return true;
+  }
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && cancelActiveOcr()) {
+      event.preventDefault();
+    }
+  });
 
   /* -----------------------------------------------------------------------
      Message-Listener
      --------------------------------------------------------------------- */
 
   chrome.runtime.onMessage.addListener((message) => {
-    if (message && message.action === "start_selection") {
+    if (!message) return;
+
+    if (message.action === "cancel_ocr") {
+      cancelActiveOcr();
+      return;
+    }
+
+    if (message.action === "start_selection") {
       Ocr.log("start_selection empfangen");
-      if (selectionInProgress) {
-        Ocr.log("Abbruch: Auswahl laeuft bereits");
-        return; // keine parallelen Overlays
+      if (selectionInProgress || ocrInProgress) {
+        const status = selectionInProgress ? "Auswahl" : "Texterkennung";
+        Ocr.log("Start abgewiesen:", status, "laeuft bereits");
+        if (ocrInProgress) {
+          Ocr.showToast("Texterkennung laeuft bereits. Mit Esc abbrechen.");
+        }
+        return; // keine parallele Auswahl bzw. OCR-Ausfuehrung
       }
       if (
         typeof message.imageUri !== "string" ||
@@ -248,7 +342,15 @@
      --------------------------------------------------------------------- */
 
   async function runOcr(img, rect) {
-    Ocr.showToast("Erkenne Text (lokal) …");
+    if (ocrInProgress) {
+      Ocr.log("OCR-Start abgewiesen: OCR laeuft bereits");
+      return;
+    }
+
+    const operation = createOcrOperation();
+    activeOcrOperation = operation;
+    ocrInProgress = true;
+    Ocr.showToast("Erkenne Text (lokal) …\nMit Esc abbrechen");
     Ocr.log("Starte OCR fuer Auswahl", JSON.stringify(rect), "Bild", img.naturalWidth + "x" + img.naturalHeight);
     try {
       let croppedDataUrl;
@@ -263,7 +365,7 @@
         return;
       }
 
-      const result = await recognizeText(croppedDataUrl);
+      const result = await recognizeText(croppedDataUrl, operation);
       const trimmed = (result.text || "").trim();
 
       if (trimmed) {
@@ -287,9 +389,21 @@
         Ocr.log("OCR fertig, kein Text");
       }
     } catch (err) {
-      Ocr.showError("Texterkennung", err, {
-        Sprachen: CONFIG.ocrLanguages.join("+"),
-      });
+      if (isOcrAbortError(err)) {
+        Ocr.showToast("Texterkennung abgebrochen.");
+        Ocr.log("OCR abgebrochen");
+      } else {
+        Ocr.showError("Texterkennung", err, {
+          Sprachen: CONFIG.ocrLanguages.join("+"),
+        });
+      }
+    } finally {
+      // Der Status wird erst nach dem terminierenden recognizeText-finally
+      // freigegeben; so kann keine zweite Auswahl neue Worker starten.
+      if (activeOcrOperation === operation) {
+        activeOcrOperation = null;
+        ocrInProgress = false;
+      }
     }
   }
 
@@ -326,7 +440,7 @@
     });
   }
 
-  async function recognizeText(dataUrl) {
+  async function recognizeText(dataUrl, operation) {
     if (!Ocr.checkTesseractLoaded()) {
       throw new Error(
         "Tesseract.js ist nicht verfuegbar (global 'Tesseract' fehlt). " +
@@ -342,19 +456,31 @@
     // (parallel initialisiert -> Init-Latenz bleibt ~gleich), dann gewinnt
     // das Ergebnis mit der hoechsten Konfidenz.
     const t0 = Date.now();
-    const workers = await Promise.all(langs.map(createOcrWorker));
-    Ocr.log("Worker bereit nach", Date.now() - t0, "ms");
-
-    // Schwellwert fuer eindeutige Sprachzuordnung: Besteht zwischen der
-    // besten und der zweitbesten Konfidenz ein kleinerer Abstand, ist die
-    // Sprache nicht sicher unterscheidbar und wird dem Nutzer NICHT
-    // angezeigt (verhindert irrefuehrende Angaben bei sprachneutralem Text
-    // wie Ziffern oder Latein, das in beiden Sprachen vorkommt).
-    const LANG_UNCERTAINTY_MARGIN = CONFIG.langUncertaintyMargin;
-
     try {
-      const results = await Promise.all(
-        workers.map((worker, i) => recognizeWith(worker, dataUrl, langs[i]))
+      const workers = await waitForOcrStep(
+        Promise.all(
+          langs.map(async (lang) => {
+            const worker = await createOcrWorker(lang);
+            operation.registerWorker(worker);
+            return worker;
+          })
+        ),
+        operation
+      );
+      Ocr.log("Worker bereit nach", Date.now() - t0, "ms");
+
+      // Schwellwert fuer eindeutige Sprachzuordnung: Besteht zwischen der
+      // besten und der zweitbesten Konfidenz ein kleinerer Abstand, ist die
+      // Sprache nicht sicher unterscheidbar und wird dem Nutzer NICHT
+      // angezeigt (verhindert irrefuehrende Angaben bei sprachneutralem Text
+      // wie Ziffern oder Latein, das in beiden Sprachen vorkommt).
+      const LANG_UNCERTAINTY_MARGIN = CONFIG.langUncertaintyMargin;
+
+      const results = await waitForOcrStep(
+        Promise.all(
+          workers.map((worker, i) => recognizeWith(worker, dataUrl, langs[i]))
+        ),
+        operation
       );
       // Hoechste Konfidenz gewinnt; bei Gleichstand gewinnt die erste Sprache.
       const sorted = results.slice().sort((a, b) => b.confidence - a.confidence);
@@ -378,14 +504,9 @@
         language: unambiguous ? languageLabel(best.language) : null,
       };
     } finally {
-      // Worker immer terminieren, sonst leaken die Web Worker
-      await Promise.all(
-        workers.map((worker) =>
-          worker.terminate().catch((termErr) =>
-            Ocr.log("Worker-Terminierung fehlgeschlagen:", termErr)
-          )
-        )
-      );
+      // Umfasst auch Fehler bei Promise.all(createWorker): alle bis dahin
+      // registrierten Worker werden immer terminiert.
+      await operation.terminateWorkers();
       Ocr.log("Worker terminiert");
     }
   }

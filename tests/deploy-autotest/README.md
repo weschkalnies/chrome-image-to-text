@@ -32,7 +32,7 @@ chrome-image-to-text/
 ```bash
 npm run build        # src/ → deploy/ neu erzeugen
 npm run check        # prüfen, ob deploy/ auf dem Stand von src/ ist
-npm run test:e2e     # Playwright-E2E-Test (lädt deploy/)
+npm run test:e2e     # erzeugt die Test-Extension und prüft den vollständigen OCR-Flow
 ```
 
 **Wichtig:** `deploy/` wird generiert und **niemals von Hand bearbeitet**.

@@ -27,7 +27,6 @@ pnpm-debug.log*
 .pnp
 .pnp.js
 # Lockfiles: ggf. wieder reinnehmen, wenn du reproduzierbare Builds teilen willst
-package-lock.json
 yarn.lock
 pnpm-lock.yaml
 
@@ -81,3 +80,4 @@ docs/*
 .clinerules
 # Fuse/WSL-Artefakte (Temp-Dateien des Dateisystems)
 .fuse_hidden*
+context/*
