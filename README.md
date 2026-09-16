@@ -4,7 +4,7 @@ A local Chrome extension (Manifest V3): select an area on screen, recognize it
 offline with Tesseract.js, review or edit the text, then copy it. Image data
 and OCR results never leave your device.
 
-![Infographic: select an area, recognize it locally with OCR, edit and copy text](docs/images/ocr-workflow-v3.png)
+![Infographic: select an area, recognize it locally with OCR, edit and copy text](public/ocr-workflow-v3.png)
 
 ## Features
 
