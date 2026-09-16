@@ -80,5 +80,5 @@ published/
 # Fuse/WSL-Artefakte (Temp-Dateien des Dateisystems)
 .fuse_hidden*
 context/*
-# Entwicklerdokumentation wird versioniert; gleichnamige Root-Dateien bleiben ignoriert.
-!docs/**
+# Lokale Entwicklerdokumentation
+docs/
