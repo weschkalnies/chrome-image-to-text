@@ -48,9 +48,12 @@
 
   function close() {
     if (!activeResult) return false;
-    const { host } = activeResult;
+    const { host, previousFocus } = activeResult;
     activeResult = null;
     if (host.parentNode) host.parentNode.removeChild(host);
+    if (previousFocus && typeof previousFocus.focus === "function" && previousFocus.isConnected) {
+      previousFocus.focus({ preventScroll: true });
+    }
     return true;
   }
 
@@ -62,12 +65,16 @@
     if (!document.body || !options || typeof options.text !== "string") return false;
     close();
 
+    const previousFocus = document.activeElement;
     const host = document.createElement("div");
     host.id = "ocr-result-host";
     const root = host.attachShadow({ mode: "closed" });
     const style = element("style", STYLES);
     const backdrop = element("div");
     backdrop.className = "backdrop";
+    backdrop.addEventListener("click", (event) => {
+      if (event.target === backdrop) close();
+    });
     const dialog = element("section");
     dialog.className = "dialog";
     dialog.setAttribute("role", "dialog");
@@ -129,10 +136,25 @@
 
     actions.append(closeButton, reselectButton, copyButton);
     dialog.append(title, meta, textarea, status, actions);
+    dialog.addEventListener("keydown", (event) => {
+      if (event.key !== "Tab") return;
+      const focusables = [textarea, closeButton, reselectButton, copyButton].filter((el) => !el.disabled);
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const current = root.activeElement;
+      if (event.shiftKey && (current === first || !current)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && current === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    });
     backdrop.appendChild(dialog);
     root.append(style, backdrop);
     document.body.appendChild(host);
-    activeResult = { host };
+    activeResult = { host, previousFocus };
     textarea.focus({ preventScroll: true });
     return true;
   }

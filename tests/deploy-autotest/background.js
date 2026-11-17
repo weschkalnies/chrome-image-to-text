@@ -43,14 +43,16 @@ async function isOcrContentScriptReady(tabId) {
 
 async function injectOcrContentScript(tabId) {
   console.log("[OCR] Injiziere tesseract.min.js + lib/ocr/* + content.js in Tab", tabId);
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    files: CONTENT_SCRIPT_FILES,
-  });
-  await chrome.scripting.insertCSS({
-    target: { tabId },
-    files: ["content.css"],
-  });
+  await Promise.all([
+    chrome.scripting.executeScript({
+      target: { tabId },
+      files: CONTENT_SCRIPT_FILES,
+    }),
+    chrome.scripting.insertCSS({
+      target: { tabId },
+      files: ["content.css"],
+    }),
+  ]);
 
   if (!await isOcrContentScriptReady(tabId)) {
     throw new Error("Content-Skript antwortet nach der Injektion nicht.");
@@ -167,19 +169,19 @@ chrome.action.onClicked.addListener(async (tab) => {
     await setActionBadge(tab.id, "");
     console.log("[OCR] Icon-Klick auf Tab", tab.id, tab.url);
 
-    // 1. Screenshot des aktuell sichtbaren Fensters (PNG, verlustfrei für OCR)
-    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
-      format: "png",
-    });
+    // 1 & 2. Screenshot des aktuell sichtbaren Fensters (PNG, verlustfrei für OCR)
+    // und Content-Script-Injektion parallel ausführen (Injektion verändert kein sichtbares DOM).
+    const [dataUrl] = await Promise.all([
+      chrome.tabs.captureVisibleTab(tab.windowId, {
+        format: "png",
+      }),
+      ensureOcrContentScript(tab.id),
+    ]);
 
     if (!dataUrl || !dataUrl.startsWith("data:image/png")) {
       throw new Error("captureVisibleTab lieferte keine gueltige PNG-dataURL.");
     }
     console.log("[OCR] Screenshot erstellt, Laenge", dataUrl.length);
-
-    // 2. Die Injektion wird pro Tab zusammengeführt. Die genaue Reihenfolge
-    //    der Dateien liegt in CONTENT_SCRIPT_FILES und ist relevant.
-    await ensureOcrContentScript(tab.id);
 
     // 3. Bilddaten an das Content-Skript übermitteln
     await chrome.tabs.sendMessage(tab.id, {
@@ -188,6 +190,7 @@ chrome.action.onClicked.addListener(async (tab) => {
     });
     console.log("[OCR] start_selection gesendet an Tab", tab.id);
   } catch (error) {
+    await setActionBadge(tab.id, "!");
     console.error(
       "[OCR] Fehler beim Starten der OCR-Auswahl:",
       error && error.message ? error.message : error,

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LocalOCR: Screen to Text",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Select any area on screen and convert it to text locally using Tesseract OCR. 100% offline.",
   "permissions": [
     "activeTab",

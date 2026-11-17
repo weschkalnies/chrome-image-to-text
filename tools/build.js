@@ -59,43 +59,44 @@ function buildAutotest() {
 }
 
 /**
- * Prueft, ob deploy/ exakt dem Build von src/ entspricht.
+ * Prueft, ob deploy/ exakt dem Build von src/ entspricht (direkter Vergleich ohne Temp-Kopie).
  * @returns {string[]} Liste der Abweichungen (leer = synchron)
  */
 function checkSync() {
-  const tmp = fs.mkdtempSync(path.join(require("os").tmpdir(), "ocr-build-"));
-  const diffs = [];
-  try {
-    // Deploy-Rezept auf Temp-Ordner anwenden
-    const savedDeploy = DEPLOY;
-    const tmpTarget = path.join(tmp, "deploy");
-    rmRf(tmpTarget);
-    copyDir(SRC, tmpTarget);
+  if (!fs.existsSync(SRC)) {
+    throw new Error("src/ nicht gefunden: " + SRC);
+  }
+  if (!fs.existsSync(DEPLOY)) {
+    return ["deploy/ fehlt komplett"];
+  }
 
-    /** Rekursives Auflisten relativer Pfade. */
-    function listFiles(dir, base) {
-      const out = [];
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        const rel = base ? base + "/" + entry.name : entry.name;
-        if (entry.isDirectory()) out.push(...listFiles(path.join(dir, entry.name), rel));
-        else out.push(rel);
-      }
-      return out;
+  /** Rekursives Auflisten relativer Pfade. */
+  function listFiles(dir, base) {
+    const out = [];
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const rel = base ? base + "/" + entry.name : entry.name;
+      if (entry.isDirectory()) out.push(...listFiles(path.join(dir, entry.name), rel));
+      else out.push(rel);
     }
+    return out;
+  }
 
-    const srcFiles = new Set(listFiles(tmpTarget, ""));
-    const dstFiles = new Set(listFiles(savedDeploy, ""));
-    for (const f of srcFiles) {
-      if (!dstFiles.has(f)) diffs.push("fehlt in deploy/: " + f);
-      else if (!fs.readFileSync(path.join(tmpTarget, f)).equals(fs.readFileSync(path.join(savedDeploy, f)))) {
+  const diffs = [];
+  const srcFiles = new Set(listFiles(SRC, ""));
+  const dstFiles = new Set(listFiles(DEPLOY, ""));
+  for (const f of srcFiles) {
+    if (!dstFiles.has(f)) {
+      diffs.push("fehlt in deploy/: " + f);
+    } else {
+      const srcBuf = fs.readFileSync(path.join(SRC, f));
+      const dstBuf = fs.readFileSync(path.join(DEPLOY, f));
+      if (!srcBuf.equals(dstBuf)) {
         diffs.push("unterschiedlich: " + f);
       }
     }
-    for (const f of dstFiles) {
-      if (!srcFiles.has(f)) diffs.push("ueberzaehlig in deploy/: " + f);
-    }
-  } finally {
-    rmRf(tmp);
+  }
+  for (const f of dstFiles) {
+    if (!srcFiles.has(f)) diffs.push("ueberzaehlig in deploy/: " + f);
   }
   return diffs;
 }

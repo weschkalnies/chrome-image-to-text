@@ -208,12 +208,15 @@
     }
 
     selectionInProgress = true;
-    Ocr.log("Overlay wird erstellt", window.innerWidth + "x" + window.innerHeight, "DPR=" + (window.devicePixelRatio || 1));
+    const dpr = window.devicePixelRatio || 1;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    Ocr.log("Overlay wird erstellt", viewportWidth + "x" + viewportHeight, "DPR=" + dpr);
 
     const canvas = document.createElement("canvas");
     canvas.id = "ocr-overlay-canvas";
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    canvas.width = Math.round(viewportWidth * dpr);
+    canvas.height = Math.round(viewportHeight * dpr);
     canvas.setAttribute("aria-hidden", "true");
     document.body.appendChild(canvas);
     activeOverlay = canvas;
@@ -224,6 +227,7 @@
       Ocr.showError("Overlay", new Error("2D canvas context is not available."));
       return;
     }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     // Screenshot asynchron laden
     const img = new Image();
@@ -231,7 +235,7 @@
     img.onload = () => {
       imgLoaded = true;
       Ocr.log("Screenshot geladen", img.naturalWidth + "x" + img.naturalHeight);
-      drawOverlay(ctx, canvas, null);
+      drawOverlay(ctx, viewportWidth, viewportHeight, null);
     };
     img.onerror = () => {
       cleanupOverlay();
@@ -244,6 +248,8 @@
     let startX = 0;
     let startY = 0;
     let isDragging = false;
+    let pendingRect = null;
+    let rafId = null;
 
     function onKeyDown(e) {
       if (e.key === "Escape") cleanup();
@@ -259,14 +265,20 @@
 
     function onMouseMove(e) {
       if (!isDragging) return;
-      const rect = normalizeRect(startX, startY, e.clientX, e.clientY);
-      drawOverlay(ctx, canvas, rect);
+      pendingRect = normalizeRect(startX, startY, e.clientX, e.clientY, viewportWidth, viewportHeight);
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        if (isDragging && pendingRect) {
+          drawOverlay(ctx, viewportWidth, viewportHeight, pendingRect);
+        }
+      });
     }
 
     function onMouseUp(e) {
       if (!isDragging) return;
       isDragging = false;
-      const rect = normalizeRect(startX, startY, e.clientX, e.clientY);
+      const rect = normalizeRect(startX, startY, e.clientX, e.clientY, viewportWidth, viewportHeight);
       cleanup(); // Overlay entfernen, bevor OCR laeuft
       if (
         rect.w >= CONFIG.minSelectionSize &&
@@ -282,27 +294,34 @@
 
     function cleanup() {
       isDragging = false;
+      pendingRect = null;
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
       document.removeEventListener("keydown", onKeyDown);
       canvas.removeEventListener("mousedown", onMouseDown);
-      canvas.removeEventListener("mousemove", onMouseMove);
-      canvas.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("blur", cleanup);
       cleanupOverlay();
     }
 
     document.addEventListener("keydown", onKeyDown);
     canvas.addEventListener("mousedown", onMouseDown);
-    canvas.addEventListener("mousemove", onMouseMove);
-    canvas.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("blur", cleanup);
   }
 
   /* -----------------------------------------------------------------------
      Zeichnen
      --------------------------------------------------------------------- */
 
-  function drawOverlay(ctx, canvas, rect) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  function drawOverlay(ctx, width, height, rect) {
+    ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, width, height);
     if (rect) {
       ctx.clearRect(rect.x, rect.y, rect.w, rect.h);
       ctx.strokeStyle = "#007bff";
@@ -311,12 +330,16 @@
     }
   }
 
-  function normalizeRect(x1, y1, x2, y2) {
+  function normalizeRect(x1, y1, x2, y2, maxW, maxH) {
+    const clampedX1 = Math.max(0, Math.min(x1, maxW));
+    const clampedY1 = Math.max(0, Math.min(y1, maxH));
+    const clampedX2 = Math.max(0, Math.min(x2, maxW));
+    const clampedY2 = Math.max(0, Math.min(y2, maxH));
     return {
-      x: Math.min(x1, x2),
-      y: Math.min(y1, y2),
-      w: Math.abs(x2 - x1),
-      h: Math.abs(y2 - y1),
+      x: Math.min(clampedX1, clampedX2),
+      y: Math.min(clampedY1, clampedY2),
+      w: Math.abs(clampedX2 - clampedX1),
+      h: Math.abs(clampedY2 - clampedY1),
     };
   }
 
@@ -341,8 +364,8 @@
     // auch nicht-proportional vom Viewport abweichen koennen.
     const scaleX = img.naturalWidth / viewportWidth;
     const scaleY = img.naturalHeight / viewportHeight;
-    const srcX = Math.round(x * scaleX);
-    const srcY = Math.round(y * scaleY);
+    const srcX = Math.max(0, Math.round(x * scaleX));
+    const srcY = Math.max(0, Math.round(y * scaleY));
     const srcW = Math.round(w * scaleX);
     const srcH = Math.round(h * scaleY);
 

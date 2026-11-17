@@ -110,11 +110,41 @@ function cdpCall(ws, method, params) {
   });
 }
 
-async function waitForFinalToast(page, timeoutMs) {
+function findNodeTextById(node, idValue) {
+  const attrs = node.attributes || [];
+  for (let i = 0; i < attrs.length; i += 2) {
+    if (attrs[i] === "id" && attrs[i + 1] === idValue) {
+      return (node.children || [])
+        .filter((child) => child.nodeName === "#text")
+        .map((child) => child.nodeValue)
+        .join("");
+    }
+  }
+  for (const key of ["children", "shadowRoots", "pseudoElements"]) {
+    for (const child of node[key] || []) {
+      const found = findNodeTextById(child, idValue);
+      if (found !== null) return found;
+    }
+  }
+  return null;
+}
+
+async function getClosedShadowToastText(context, page) {
+  const session = await context.newCDPSession(page);
+  try {
+    await session.send("DOM.enable");
+    const { root } = await session.send("DOM.getDocument", { depth: -1, pierce: true });
+    return findNodeTextById(root, "ocr-status-toast");
+  } finally {
+    await session.detach();
+  }
+}
+
+async function waitForFinalToast(context, page, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     await page.waitForTimeout(250);
-    const text = await page.locator("#ocr-status-toast").textContent().catch(() => null);
+    const text = await getClosedShadowToastText(context, page).catch(() => null);
     if (!text) continue;
     if (/Text copied to clipboard!/i.test(text)) return text;
     if (/(Fehler|failed|No text recognized|unavailable)/i.test(text)) {
@@ -262,7 +292,7 @@ const log = (message) => {
     assert(!resultPrivacy.pageText.includes(EXPECTED_TEXT), "Das OCR-Ergebnis ist im Seiten-DOM lesbar.");
 
     await clickClosedShadowButton(context, page, "Copy");
-    const toast = await waitForFinalToast(page, 5000);
+    const toast = await waitForFinalToast(context, page, 5000);
     const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
     assert(
       normalizeText(clipboardText) === EXPECTED_TEXT,
