@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Local Screen OCR",
+  "name": "LocalOCR: Screen to Text",
   "version": "1.0.8",
   "description": "Erfasst einen Bereich des Bildschirms und wandelt ihn lokal via Tesseract OCR in Text um. 100% offline.",
   "permissions": [

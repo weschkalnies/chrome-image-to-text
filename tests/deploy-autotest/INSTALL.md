@@ -1,4 +1,4 @@
-# Local Screen OCR – Installation (Test in Chrome)
+# LocalOCR: Screen to Text – Installation (Test in Chrome)
 
 Diese Version ist **fertig zum Testen** – alle Tesseract.js-Dateien liegen
 bereits lokal in `lib/` (100% offline).
@@ -15,9 +15,9 @@ bereits lokal in `lib/` (100% offline).
 
 1. Auf das Extension-Icon in der Toolbar klicken.
 2. Gewünschten Bereich mit gedrückter linker Maustaste aufziehen.
-3. Text wird lokal erkannt und in die Zwischenablage kopiert
-   (Toast zeigt den Status).
-4. `Esc` bricht die Auswahl ab.
+3. Den lokal erkannten Text im editierbaren Ergebnisdialog prüfen oder anpassen.
+4. **Kopieren** übernimmt den Text in die Zwischenablage (Toast bestätigt); **Auswahl wiederholen** nutzt denselben Screenshot erneut.
+5. `Esc` bricht die Auswahl ab oder schließt den Ergebnisdialog.
 
 ## Hinweise
 

@@ -90,10 +90,12 @@ async function ensureOcrContentScript(tabId) {
   }
 }
 
+const ALLOWED_PROTOCOLS = new Set(["http:", "https:", "file:"]);
+
 /**
  * Prüft, ob eine URL für die Skriptinjektion geeignet ist.
- * Browser-interne Seiten (chrome://, edge://, chrome-extension://, about:)
- * dürfen nicht modifiziert werden.
+ * Erlaubt ausschließlich http:, https: und file: und blockiert Web-Store-Seiten
+ * sowie Browser-interne Schemata (chrome://, view-source:, about:, etc.).
  *
  * @param {string|undefined} url
  * @returns {boolean} true, wenn die URL erlaubt ist
@@ -103,8 +105,50 @@ function isInjectableUrl(url) {
     // Ohne explicit host-permission ist url evtl. undefined -> sicherheitshalber ablehnen
     return false;
   }
-  const blocked = ["chrome://", "chrome-extension://", "edge://", "about:", "https://chrome.google.com/webstore"];
-  return !blocked.some((prefix) => url.startsWith(prefix));
+
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch (_error) {
+    return false;
+  }
+
+  if (!ALLOWED_PROTOCOLS.has(parsed.protocol)) {
+    return false;
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  if (hostname === "chromewebstore.google.com") {
+    return false;
+  }
+  if (
+    hostname === "chrome.google.com" &&
+    (parsed.pathname === "/webstore" || parsed.pathname.startsWith("/webstore/"))
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Setzt oder löscht das Aktions-Badge für den angegebenen Tab.
+ *
+ * @param {number} tabId
+ * @param {string} text
+ */
+async function setActionBadge(tabId, text) {
+  if (!chrome.action || typeof chrome.action.setBadgeText !== "function") {
+    return;
+  }
+  try {
+    if (text && typeof chrome.action.setBadgeBackgroundColor === "function") {
+      await chrome.action.setBadgeBackgroundColor({ tabId, color: "#d93025" });
+    }
+    await chrome.action.setBadgeText({ tabId, text });
+  } catch (_error) {
+    // Tab existiert evtl. nicht mehr; kein kritischer Fehler.
+  }
 }
 
 chrome.action.onClicked.addListener(async (tab) => {
@@ -115,10 +159,12 @@ chrome.action.onClicked.addListener(async (tab) => {
 
   if (!isInjectableUrl(tab.url)) {
     console.error("[OCR] Auf dieser Seite kann die Erweiterung nicht ausgeführt werden.");
+    await setActionBadge(tab.id, "!");
     return;
   }
 
   try {
+    await setActionBadge(tab.id, "");
     console.log("[OCR] Icon-Klick auf Tab", tab.id, tab.url);
 
     // 1. Screenshot des aktuell sichtbaren Fensters (PNG, verlustfrei für OCR)

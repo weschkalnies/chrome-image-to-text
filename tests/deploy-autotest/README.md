@@ -1,4 +1,4 @@
-# Local Screen OCR – Chrome-Erweiterung
+# LocalOCR: Screen to Text – Chrome-Erweiterung
 
 Lokale, **100% offline** arbeitende Chrome-Erweiterung (Manifest V3), die per
 Klick auf das Icon einen Bildschirmbereich auswählt, diesen mit **Tesseract.js

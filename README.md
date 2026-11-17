@@ -1,4 +1,4 @@
-# Local Screen OCR
+# LocalOCR: Screen to Text
 
 A local Chrome extension (Manifest V3): select an area on screen, recognize it
 offline with Tesseract.js, review or edit the text, then copy it. Image data

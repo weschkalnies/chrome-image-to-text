@@ -18,7 +18,15 @@ const TAB = { id: 17, windowId: 4, url: "https://example.test/" };
 
 function createHarness({ contentReady = false, holdInjection = false } = {}) {
   const listeners = {};
-  const metrics = { captures: 0, pings: 0, executeScripts: 0, insertCss: 0, starts: 0 };
+  const metrics = {
+    captures: 0,
+    pings: 0,
+    executeScripts: 0,
+    insertCss: 0,
+    starts: 0,
+    badges: [],
+    badgeColors: [],
+  };
   let releaseInjection;
   let signalInjectionStarted;
   const injectionStarted = new Promise((resolve) => { signalInjectionStarted = resolve; });
@@ -27,6 +35,12 @@ function createHarness({ contentReady = false, holdInjection = false } = {}) {
   const chrome = {
     action: {
       onClicked: { addListener(listener) { listeners.click = listener; } },
+      async setBadgeText(details) {
+        metrics.badges.push({ ...details });
+      },
+      async setBadgeBackgroundColor(details) {
+        metrics.badgeColors.push({ ...details });
+      },
     },
     tabs: {
       async captureVisibleTab() {
@@ -59,7 +73,7 @@ function createHarness({ contentReady = false, holdInjection = false } = {}) {
     },
   };
 
-  vm.runInNewContext(SOURCE, { chrome, console });
+  vm.runInNewContext(SOURCE, { chrome, console, URL });
   return {
     metrics,
     click: (tab = TAB) => listeners.click(tab),
@@ -85,6 +99,42 @@ function createHarness({ contentReady = false, holdInjection = false } = {}) {
   assert.strictEqual(restartedServiceWorker.metrics.executeScripts, 0, "Ein lebendes Content-Skript darf nach Worker-Neustart nicht erneut injiziert werden.");
   assert.strictEqual(restartedServiceWorker.metrics.insertCss, 0, "CSS darf nach erfolgreichem ocr_ping nicht erneut injiziert werden.");
   assert.strictEqual(restartedServiceWorker.metrics.starts, 1, "Der OCR-Start muss den vorhandenen Empfänger erreichen.");
+
+  // Blockierte URLs dürfen keinen Screenshot/Injection auslösen, sondern setzen das "!"-Badge.
+  const blockedUrls = [
+    "https://chromewebstore.google.com/detail/local-screen-ocr/abcdefghijklmnop",
+    "https://chrome.google.com/webstore/detail/local-screen-ocr/abcdefghijklmnop",
+    "chrome://new-tab-page",
+    "view-source:https://example.test/",
+    "about:blank",
+    undefined,
+  ];
+  for (const url of blockedUrls) {
+    const blockedHarness = createHarness();
+    await blockedHarness.click({ id: 17, windowId: 4, url });
+    assert.strictEqual(blockedHarness.metrics.captures, 0, `Blockierte URL darf keinen Screenshot auslösen: ${url}`);
+    assert.strictEqual(blockedHarness.metrics.executeScripts, 0, `Blockierte URL darf kein Skript injizieren: ${url}`);
+    assert.strictEqual(blockedHarness.metrics.starts, 0, `Blockierte URL darf kein start_selection senden: ${url}`);
+    assert.deepStrictEqual(
+      blockedHarness.metrics.badges,
+      [{ tabId: 17, text: "!" }],
+      `Blockierte URL muss "!"-Badge setzen: ${url}`
+    );
+  }
+
+  // Erlaubte URLs (inkl. file:// und Nicht-Webstore-Seiten auf chrome.google.com) müssen laufen und das Badge löschen.
+  for (const url of ["file:///tmp/local-document.html", "https://chrome.google.com/other-page"]) {
+    const allowedHarness = createHarness();
+    await allowedHarness.click({ id: 17, windowId: 4, url });
+    assert.strictEqual(allowedHarness.metrics.captures, 1, `Erlaubte URL muss Screenshot erstellen: ${url}`);
+    assert.strictEqual(allowedHarness.metrics.executeScripts, 1, `Erlaubte URL muss Skript injizieren: ${url}`);
+    assert.strictEqual(allowedHarness.metrics.starts, 1, `Erlaubte URL muss start_selection senden: ${url}`);
+    assert.deepStrictEqual(
+      allowedHarness.metrics.badges,
+      [{ tabId: 17, text: "" }],
+      `Erlaubte URL muss vorheriges Badge löschen: ${url}`
+    );
+  }
 
   console.log("OK: Content-Script-Injektion ist gegen Klick-Rennen und MV3-Neustarts abgesichert.");
 })().catch((error) => {
