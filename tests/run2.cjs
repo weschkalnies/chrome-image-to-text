@@ -116,8 +116,8 @@ async function waitForFinalToast(page, timeoutMs) {
     await page.waitForTimeout(250);
     const text = await page.locator("#ocr-status-toast").textContent().catch(() => null);
     if (!text) continue;
-    if (/Text in Zwischenablage kopiert!/i.test(text)) return text;
-    if (/(Fehler|failed|Kein Text erkannt|nicht verfuegbar)/i.test(text)) {
+    if (/Text copied to clipboard!/i.test(text)) return text;
+    if (/(Fehler|failed|No text recognized|unavailable)/i.test(text)) {
       throw new Error("OCR meldete keinen Erfolg: " + text);
     }
   }
@@ -261,7 +261,7 @@ const log = (message) => {
     assert(!resultPrivacy.hasOpenShadowRoot, "Das OCR-Ergebnis darf keinen offenen Shadow-DOM verwenden.");
     assert(!resultPrivacy.pageText.includes(EXPECTED_TEXT), "Das OCR-Ergebnis ist im Seiten-DOM lesbar.");
 
-    await clickClosedShadowButton(context, page, "Kopieren");
+    await clickClosedShadowButton(context, page, "Copy");
     const toast = await waitForFinalToast(page, 5000);
     const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
     assert(

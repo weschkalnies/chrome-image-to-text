@@ -1,29 +1,30 @@
 # LocalOCR: Screen to Text – Installation (Test in Chrome)
 
-Diese Version ist **fertig zum Testen** – alle Tesseract.js-Dateien liegen
-bereits lokal in `lib/` (100% offline).
+This version is **ready to test** – all Tesseract.js files are already
+bundled locally in `lib/` (100% offline).
 
-## Schritte
+## Steps
 
-1. Chrome öffnen → `chrome://extensions/` aufrufen.
-2. Oben rechts den **Entwicklermodus** einschalten.
-3. Auf **Entpackte Erweiterung laden** klicken.
-4. Den Ordner `deploy` auswählen:
-   `.\deploy`
+1. Open Chrome → go to `chrome://extensions/`.
+2. Enable **Developer mode** in the top right.
+3. Click **Load unpacked**.
+4. Select the `deploy` folder:
+   `./deploy`
 
-## Nutzung
+## Usage
 
-1. Auf das Extension-Icon in der Toolbar klicken.
-2. Gewünschten Bereich mit gedrückter linker Maustaste aufziehen.
-3. Den lokal erkannten Text im editierbaren Ergebnisdialog prüfen oder anpassen.
-4. **Kopieren** übernimmt den Text in die Zwischenablage (Toast bestätigt); **Auswahl wiederholen** nutzt denselben Screenshot erneut.
-5. `Esc` bricht die Auswahl ab oder schließt den Ergebnisdialog.
+1. Click the extension icon in the toolbar.
+2. Drag with the left mouse button to select the desired area.
+3. Review or edit the locally recognized text in the result dialog.
+4. Select **Copy** to copy the text to the clipboard (toast confirms);
+   **Reselect area** reuses the same screenshot.
+5. `Esc` cancels the selection or closes the result dialog.
 
-## Hinweise
+## Notes
 
-- Funktioniert nicht auf Browser-internen Seiten
-  (`chrome://`, Web Store, `about:`).
-- Seiten mit sehr strenger CSP können das Laden des Tesseract-Web-Workers
-  blockieren → Fehler-Toast erscheint.
-- Beim ersten OCR-Lauf lädt Tesseract die WASM-Core- und Sprachdaten aus
-  `lib/` (lokal, kein Netzwerk) – das kann 1–2 Sekunden dauern.
+- Does not run on browser-internal pages (`chrome://`, Chrome Web Store,
+  `about:`, `view-source:`).
+- Pages with a strict CSP may block loading the Tesseract web worker →
+  an error toast appears.
+- On the first OCR run, Tesseract loads the WASM core and language data
+  from `lib/` (locally, no network) – this may take 1–2 seconds.

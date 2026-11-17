@@ -1,59 +1,60 @@
-# LocalOCR: Screen to Text – Chrome-Erweiterung
+# LocalOCR: Screen to Text – Chrome Extension
 
-Lokale, **100% offline** arbeitende Chrome-Erweiterung (Manifest V3), die per
-Klick auf das Icon einen Bildschirmbereich auswählt, diesen mit **Tesseract.js
-(WebAssembly)** in Text umwandelt und ihn vor dem Kopieren editierbar anzeigt.
+A local, **100% offline** Chrome extension (Manifest V3) that lets you select
+an area of the screen by clicking the toolbar icon, converts it into text with
+**Tesseract.js (WebAssembly)**, and displays an editable result before copying.
 
-Es werden **keine** Cloud-Dienste, Server oder APIs verwendet. Alle Bilddaten
-verbleiben auf dem Endgerät.
+**No** cloud services, servers, or external APIs are used. All image data stays
+on your device.
 
-## Projektstruktur
+## Project Structure
 
 ```text
 chrome-image-to-text/
-├── src/                   ← SINGLE SOURCE OF TRUTH (hier entwickeln!)
+├── src/                   ← SINGLE SOURCE OF TRUTH (develop here!)
 │   ├── manifest.json
-│   ├── background.js      # Service Worker (Icon-Klick, Screenshot, Injection)
-│   ├── content.js         # Overlay-Auswahl, Crop, OCR (Orchestrator)
-│   ├── content.css        # Styles für Overlay & Toast
-│   ├── icons/             # Extension-Icons
+│   ├── background.js      # Service worker (icon click, screenshot, injection)
+│   ├── content.js         # Overlay selection, crop, OCR (orchestrator)
+│   ├── content.css        # Styles for overlay & toast
+│   ├── icons/             # Extension icons
 │   └── lib/
-│       ├── ocr/           # Helper-Module (config, toast, logger, clipboard)
-│       ├── ui/result.js   # geschützter, editierbarer Ergebnisdialog
-│       ├── tesseract.min.js … # lokale Tesseract.js-Ressourcen (Vendor)
-├── deploy/                ← GENERIERT (npm run build) – in Chrome laden
-├── tools/build.js         # Build-Skript (src → deploy, --autotest, --check)
-├── tests/                 # Playwright-E2E-Harness (run2.cjs / run3.cjs)
-└── package.json           # npm-Skripte (build / check / test:e2e)
+│       ├── ocr/           # Helper modules (config, toast, logger, clipboard)
+│       ├── ui/result.js   # Protected, editable result dialog
+│       ├── tesseract.min.js … # Local Tesseract.js assets (vendor)
+├── deploy/                ← GENERATED (npm run build) – load in Chrome
+├── tools/build.js         # Build script (src -> deploy, --autotest, --check)
+├── tests/                 # Playwright E2E harness (run2.cjs)
+└── package.json           # npm scripts (build / check / pack / test:e2e)
 ```
 
-## Entwicklung & Build
+## Development & Build
 
 ```bash
-npm run build        # src/ → deploy/ neu erzeugen
-npm run check        # prüfen, ob deploy/ auf dem Stand von src/ ist
-npm run test:e2e     # erzeugt die Test-Extension und prüft den vollständigen OCR-Flow
+npm run build        # generate deploy/ from src/
+npm run check        # verify deploy/ matches src/
+npm run pack         # build deploy/ and package localocr-screen-to-text.zip
+npm run test:e2e     # build test extension and verify the full OCR flow
 ```
 
-**Wichtig:** `deploy/` wird generiert und **niemals von Hand bearbeitet**.
-Änderungen immer in `src/` machen und den Build laufen lassen.
+**Important:** `deploy/` is generated and must **never be edited manually**.
+Always edit files in `src/` and run the build script.
 
 ## Installation (Test in Chrome)
 
-1. `chrome://extensions/` öffnen.
-2. **Entwicklermodus** aktivieren.
-3. **Entpackte Erweiterung laden** → Ordner `deploy` wählen.
+1. Open `chrome://extensions/`.
+2. Enable **Developer mode**.
+3. Click **Load unpacked** → select the `deploy` folder.
 
-## Nutzung
+## Usage
 
-1. Auf das Extension-Icon klicken.
-2. Den gewünschten Bereich mit gedrückter linker Maustaste aufziehen.
-3. Den erkannten Text im Ergebnisdialog prüfen oder bearbeiten.
-4. **Kopieren** wählen; **Auswahl wiederholen** verwendet denselben Screenshot.
-5. `Esc` bricht eine Auswahl ab oder schließt den Ergebnisdialog.
+1. Click the extension icon.
+2. Drag with the left mouse button to select the desired area.
+3. Review or edit the recognized text in the result dialog.
+4. Select **Copy**; **Reselect area** reuses the same screenshot.
+5. `Esc` cancels an active selection or closes the result dialog.
 
-## Sicherheit
+## Privacy & Security
 
-Die Erweiterung arbeitet lokal und benötigt nur `activeTab` und `scripting`.
-Das vollständige Sicherheits-Audit liegt in der Entwicklerdokumentation des
-Repositorys unter `docs/`.
+The extension works 100% locally and only requests `activeTab` and `scripting`.
+The full security audit is located in the repository's developer documentation
+under `docs/`.

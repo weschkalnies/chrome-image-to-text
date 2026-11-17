@@ -171,7 +171,7 @@ async function startSelection(page, imageUri = TEST_IMAGE, start = { x: 1, y: 1 
     await page.keyboard.press("Escape");
     await waitFor(
       page,
-      () => window.__ocrEvents.some((event) => event[1] === "Texterkennung abgebrochen."),
+      () => window.__ocrEvents.some((event) => event[1] === "Text recognition cancelled."),
       "Escape hat die laufende OCR nicht abgebrochen."
     );
     const cancelled = await page.evaluate(() => window.__ocrWorkers.map((worker) => worker.terminateCalls));

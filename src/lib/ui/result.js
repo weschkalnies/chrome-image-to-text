@@ -72,17 +72,17 @@
     dialog.className = "dialog";
     dialog.setAttribute("role", "dialog");
     dialog.setAttribute("aria-modal", "true");
-    dialog.setAttribute("aria-label", "OCR-Ergebnis");
+    dialog.setAttribute("aria-label", "OCR result");
 
-    const title = element("h2", "Text erkannt");
-    const metaParts = ["Konfidenz " + Math.round(options.confidence || 0) + "%"];
-    if (options.language) metaParts.push("Sprache " + options.language);
+    const title = element("h2", "Recognized Text");
+    const metaParts = ["Confidence " + Math.round(options.confidence || 0) + "%"];
+    if (options.language) metaParts.push("Language " + options.language);
     const meta = element("div", metaParts.join(" · "));
     meta.className = "meta";
 
     const textarea = element("textarea");
     textarea.value = options.text;
-    textarea.setAttribute("aria-label", "Erkannter Text, bearbeitbar");
+    textarea.setAttribute("aria-label", "Recognized text, editable");
 
     const status = element("div");
     status.className = "status";
@@ -91,12 +91,12 @@
 
     const actions = element("div");
     actions.className = "actions";
-    const closeButton = element("button", "Schließen");
+    const closeButton = element("button", "Close");
     closeButton.className = "secondary";
     closeButton.type = "button";
     closeButton.addEventListener("click", close);
 
-    const reselectButton = element("button", "Auswahl wiederholen");
+    const reselectButton = element("button", "Reselect area");
     reselectButton.className = "secondary";
     reselectButton.type = "button";
     reselectButton.addEventListener("click", () => {
@@ -104,13 +104,13 @@
       if (typeof options.onReselect === "function") options.onReselect();
     });
 
-    const copyButton = element("button", "Kopieren");
+    const copyButton = element("button", "Copy");
     copyButton.className = "primary";
     copyButton.type = "button";
     copyButton.addEventListener("click", async () => {
       const text = textarea.value;
       if (!text.trim()) {
-        status.textContent = "Der Text ist leer.";
+        status.textContent = "Text is empty.";
         textarea.focus();
         return;
       }
@@ -118,10 +118,10 @@
       try {
         const copied = typeof options.onCopy === "function" && await options.onCopy(text);
         status.textContent = copied
-          ? "In die Zwischenablage kopiert."
-          : "Kopieren fehlgeschlagen. Bitte erneut versuchen.";
+          ? "Copied to clipboard."
+          : "Copy failed. Please try again.";
       } catch (error) {
-        status.textContent = "Kopieren fehlgeschlagen. Bitte erneut versuchen.";
+        status.textContent = "Copy failed. Please try again.";
       } finally {
         copyButton.disabled = false;
       }

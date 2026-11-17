@@ -57,7 +57,7 @@
   let ocrInProgress = false;
 
   function createOcrAbortError() {
-    const error = new Error("Texterkennung wurde abgebrochen.");
+    const error = new Error("Text recognition was cancelled.");
     error.name = "OcrAbortError";
     return error;
   }
@@ -127,7 +127,7 @@
     if (!activeOcrOperation) return false;
     Ocr.log("OCR-Abbruch angefordert");
     activeOcrOperation.abort();
-    Ocr.showToast("Texterkennung wird abgebrochen …");
+    Ocr.showToast("Cancelling text recognition …");
     return true;
   }
 
@@ -168,7 +168,7 @@
         const status = selectionInProgress ? "Auswahl" : "Texterkennung";
         Ocr.log("Start abgewiesen:", status, "laeuft bereits");
         if (ocrInProgress) {
-          Ocr.showToast("Texterkennung laeuft bereits. Mit Esc abbrechen.");
+          Ocr.showToast("Text recognition is already running. Press Esc to cancel.");
         }
         return; // keine parallele Auswahl bzw. OCR-Ausfuehrung
       }
@@ -178,7 +178,7 @@
       ) {
         Ocr.showError(
           "Start",
-          new Error("Ungueltige Bilddaten empfangen (kein data:image/*)."),
+          new Error("Invalid image data received (not a data:image/* URI)."),
           { type: typeof message.imageUri }
         );
         return;
@@ -187,8 +187,7 @@
         Ocr.showError(
           "Start",
           new Error(
-            "Tesseract.js ist nicht geladen. Moegliche Ursache: die Seite " +
-              "blockt per CSP das Injizieren von lib/tesseract.min.js."
+            "Tesseract.js is not loaded. The page's CSP may be blocking lib/tesseract.min.js."
           )
         );
         return;
@@ -204,7 +203,7 @@
 
   function initSelection(imageUri) {
     if (!document.body) {
-      Ocr.showError("Start", new Error("document.body ist nicht vorhanden (Seite noch nicht bereit)."));
+      Ocr.showError("Start", new Error("document.body is not available (page not ready yet)."));
       return;
     }
 
@@ -222,7 +221,7 @@
     const ctx = canvas.getContext("2d");
     if (!ctx) {
       cleanupOverlay();
-      Ocr.showError("Overlay", new Error("2D-Canvas-Kontext nicht verfuegbar."));
+      Ocr.showError("Overlay", new Error("2D canvas context is not available."));
       return;
     }
 
@@ -236,7 +235,7 @@
     };
     img.onerror = () => {
       cleanupOverlay();
-      Ocr.showError("Screenshot-Laden", new Error("Das dataURL-Bild konnte nicht dekodiert werden."), {
+      Ocr.showError("Screenshot loading", new Error("Could not decode the screenshot image."), {
         dataLen: imageUri ? imageUri.length : 0,
       });
     };
@@ -274,7 +273,7 @@
         rect.h >= CONFIG.minSelectionSize
       ) {
         if (!imgLoaded) {
-          Ocr.showError("OCR", new Error("Screenshot wurde noch nicht dekodiert, als die Auswahl endete."));
+          Ocr.showError("OCR", new Error("Screenshot had not finished decoding when selection ended."));
           return;
         }
         runOcr(img, rect, imageUri);
@@ -333,7 +332,7 @@
       !Number.isFinite(viewportHeight) || viewportHeight <= 0 ||
       !img.naturalWidth || !img.naturalHeight
     ) {
-      throw new Error("Screenshot- oder Viewport-Abmessungen sind ungueltig.");
+      throw new Error("Screenshot or viewport dimensions are invalid.");
     }
 
     // captureVisibleTab() kann eine andere physische Aufloesung als die
@@ -349,7 +348,7 @@
 
     // DoS-Schutz: extrem grosse Crops ablehnen
     if (srcW * srcH > CONFIG.maxCropPixels) {
-      throw new Error("Auswahl zu gross.");
+      throw new Error("Selected area is too large.");
     }
 
     // Quellbereich begrenzen, falls er das Bild uebersteigt
@@ -361,7 +360,7 @@
     cropCanvas.height = clampedH;
 
     const ctx = cropCanvas.getContext("2d");
-    if (!ctx) throw new Error("Canvas-Kontext nicht verfuegbar.");
+    if (!ctx) throw new Error("Canvas context is not available.");
 
     // Physische Screenshot-Aufloesung fuer bestmoegliche OCR-Genauigkeit
     // beibehalten.
@@ -383,7 +382,7 @@
     const operation = createOcrOperation();
     activeOcrOperation = operation;
     ocrInProgress = true;
-    Ocr.showToast("Erkenne Text (lokal) …\nMit Esc abbrechen");
+    Ocr.showToast("Recognizing text (local) …\nPress Esc to cancel");
     Ocr.log("Starte OCR fuer Auswahl", JSON.stringify(rect), "Bild", img.naturalWidth + "x" + img.naturalHeight);
     try {
       let croppedDataUrl;
@@ -391,9 +390,9 @@
         croppedDataUrl = cropImage(img, rect.x, rect.y, rect.w, rect.h);
         Ocr.log("Crop erzeugt", croppedDataUrl.length + " Zeichen dataURL");
       } catch (cropErr) {
-        Ocr.showError("Zuschneiden", cropErr, {
-          auswahl: rect.w + "x" + rect.h,
-          bild: img.naturalWidth + "x" + img.naturalHeight,
+        Ocr.showError("Cropping", cropErr, {
+          selection: rect.w + "x" + rect.h,
+          image: img.naturalWidth + "x" + img.naturalHeight,
         });
         return;
       }
@@ -415,8 +414,8 @@
             const copied = await Ocr.copyToClipboard(editedText);
             Ocr.showToast(
               copied
-                ? "Text in Zwischenablage kopiert!"
-                : "Text erkannt, aber Zwischenablage nicht verfuegbar (siehe Konsole).",
+                ? "Text copied to clipboard!"
+                : "Text recognized, but clipboard is unavailable (see console).",
               copied ? "success" : "error"
             );
             Ocr.log("OCR-Ergebnis kopiert:", copied, "Zeichen:", editedText.length);
@@ -426,16 +425,16 @@
         });
         Ocr.log("OCR fertig, Ergebnis angezeigt:", details);
       } else {
-        Ocr.showToast("Kein Text erkannt.", "error");
+        Ocr.showToast("No text recognized.", "error");
         Ocr.log("OCR fertig, kein Text");
       }
     } catch (err) {
       if (isOcrAbortError(err)) {
-        Ocr.showToast("Texterkennung abgebrochen.");
+        Ocr.showToast("Text recognition cancelled.");
         Ocr.log("OCR abgebrochen");
       } else {
-        Ocr.showError("Texterkennung", err, {
-          Sprachen: CONFIG.ocrLanguages.join("+"),
+        Ocr.showError("Text recognition", err, {
+          Languages: CONFIG.ocrLanguages.join("+"),
         });
       }
     } finally {
@@ -450,7 +449,7 @@
 
   /** Anzeigename fuer eine Tesseract-Sprachkennung (Fallback: Kennung selbst). */
   function languageLabel(lang) {
-    const LABELS = { eng: "Englisch", deu: "Deutsch" };
+    const LABELS = { eng: "English", deu: "German" };
     return LABELS[lang] || lang;
   }
 
@@ -484,8 +483,8 @@
   async function recognizeText(dataUrl, operation) {
     if (!Ocr.checkTesseractLoaded()) {
       throw new Error(
-        "Tesseract.js ist nicht verfuegbar (global 'Tesseract' fehlt). " +
-          "Wahrscheinlich wurde lib/tesseract.min.js durch die CSP der Seite blockiert."
+        "Tesseract.js is not available (global 'Tesseract' missing). " +
+          "lib/tesseract.min.js was likely blocked by the page's CSP."
       );
     }
 

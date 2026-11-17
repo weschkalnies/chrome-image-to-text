@@ -2,26 +2,26 @@
   "manifest_version": 3,
   "name": "LocalOCR: Screen to Text",
   "version": "1.0.8",
-  "description": "Erfasst einen Bereich des Bildschirms und wandelt ihn lokal via Tesseract OCR in Text um. 100% offline.",
+  "description": "Select any area on screen and convert it to text locally using Tesseract OCR. 100% offline.",
   "permissions": [
     "activeTab",
     "scripting"
   ],
   "action": {
-    "default_title": "Screenshot OCR starten",
+    "default_title": "Start Screen OCR",
     "default_icon": {
-      "16": "icons/icon16-v2.png",
-      "32": "icons/icon32-v2.png",
-      "48": "icons/icon48-v2.png"
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
     }
   },
   "icons": {
-    "16": "icons/icon16-v2.png",
-    "32": "icons/icon32-v2.png",
-    "48": "icons/icon48-v2.png",
-    "64": "icons/icon64-v2.png",
-    "128": "icons/icon128-v2.png",
-    "256": "icons/icon256-v2.png"
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png",
+    "512": "icons/icon-512.png"
   },
   "background": {
     "service_worker": "background.js"
