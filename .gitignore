@@ -63,6 +63,7 @@ logs/
 *.local
 secrets.json
 credentials.json
+*service-account*.json
 
 # ---------- Test / Coverage ----------
 coverage/
