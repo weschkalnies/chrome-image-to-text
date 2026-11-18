@@ -519,17 +519,44 @@
     // (parallel initialisiert -> Init-Latenz bleibt ~gleich), dann gewinnt
     // das Ergebnis mit der hoechsten Konfidenz.
     const t0 = Date.now();
+    let cspDirective = null;
+    function onSecurityPolicyViolation(event) {
+      const directive = event && (event.effectiveDirective || event.violatedDirective);
+      if (directive && /^(worker-src|child-src|script-src)/.test(directive)) {
+        cspDirective = directive;
+      }
+    }
+    document.addEventListener("securitypolicyviolation", onSecurityPolicyViolation);
+
     try {
-      const workers = await waitForOcrStep(
-        Promise.all(
-          langs.map(async (lang) => {
-            const worker = await createOcrWorker(lang);
-            operation.registerWorker(worker);
-            return worker;
-          })
-        ),
-        operation
-      );
+      let workers;
+      try {
+        workers = await waitForOcrStep(
+          Promise.all(
+            langs.map(async (lang) => {
+              const worker = await createOcrWorker(lang);
+              operation.registerWorker(worker);
+              return worker;
+            })
+          ),
+          operation
+        );
+      } catch (initErr) {
+        if (isOcrAbortError(initErr)) throw initErr;
+        if (cspDirective) {
+          throw new Error(
+            "Blocked by this page's Content Security Policy (" +
+              cspDirective +
+              "). This website does not allow local OCR web workers (blob:)."
+          );
+        }
+        if (!initErr || !initErr.message) {
+          throw new Error(
+            "Could not start local OCR worker. The page's Content Security Policy (worker-src) may be blocking web workers."
+          );
+        }
+        throw initErr;
+      }
       Ocr.log("Worker bereit nach", Date.now() - t0, "ms");
 
       // Schwellwert fuer eindeutige Sprachzuordnung: Besteht zwischen der
@@ -567,6 +594,7 @@
         language: unambiguous ? languageLabel(best.language) : null,
       };
     } finally {
+      document.removeEventListener("securitypolicyviolation", onSecurityPolicyViolation);
       // Umfasst auch Fehler bei Promise.all(createWorker): alle bis dahin
       // registrierten Worker werden immer terminiert.
       await operation.terminateWorkers();

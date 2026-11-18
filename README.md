@@ -75,7 +75,6 @@ chrome-image-to-text/
 ├── deploy/                  # generated extension loaded in Chrome
 ├── tests/                   # browser and regression tests
 ├── tools/build.js           # build and drift check
-├── docs/                    # versioned developer documentation
 └── package.json             # npm scripts
 ```
 
@@ -84,8 +83,6 @@ chrome-image-to-text/
 - No cloud, telemetry or external OCR requests.
 - The editable result dialog uses a closed Shadow DOM, so scripts on the
   visited website cannot read the recognized text.
-- The full audit and further developer documentation are available in
-  [docs/](docs/README.md).
 
 ## Release checklist
 

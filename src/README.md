@@ -56,5 +56,3 @@ Always edit files in `src/` and run the build script.
 ## Privacy & Security
 
 The extension works 100% locally and only requests `activeTab` and `scripting`.
-The full security audit is located in the repository's developer documentation
-under `docs/`.

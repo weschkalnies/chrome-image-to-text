@@ -86,3 +86,7 @@ GEMINI.md
 # Chrome Web Store Promo-Assets (nur lokal)
 public/store-icon-128x128.png
 public/store_promo/
+
+# Generierte/lokale Test-Artefakte (npm run build:autotest) und Debug-Skripte
+tests/deploy-autotest/
+tests/debug*.cjs

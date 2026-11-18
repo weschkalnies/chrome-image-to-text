@@ -14,6 +14,20 @@
     console.log("[OCR]", ...args);
   }
 
+  function formatErrorMessage(err) {
+    if (err && typeof err.message === "string" && err.message.trim()) {
+      return err.message;
+    }
+    if (err && typeof err.type === "string") {
+      return "Event(" + err.type + ")";
+    }
+    if (err === undefined || err === null) {
+      return "Unknown error";
+    }
+    const text = String(err);
+    return text === "undefined" ? "Unknown error" : text;
+  }
+
   /**
    * Detailed error report: writes the full error (including stack) to the
    * console and shows a readable message as a toast.
@@ -24,7 +38,7 @@
    */
   function showError(context, err, extra) {
     const name = (err && err.name) || "Error";
-    const msg = (err && err.message) || String(err);
+    const msg = formatErrorMessage(err);
     console.error("[OCR]", context, "-", name + ":", msg, "\n", err, extra || "");
 
     // Build readable toast line(s) – textContent only, never innerHTML (no XSS)
