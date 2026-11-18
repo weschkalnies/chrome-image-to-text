@@ -13,12 +13,14 @@ on your device.
 chrome-image-to-text/
 ├── src/                   ← SINGLE SOURCE OF TRUTH (develop here!)
 │   ├── manifest.json
-│   ├── background.js      # Service worker (icon click, screenshot, injection)
-│   ├── content.js         # Overlay selection, crop, OCR (orchestrator)
-│   ├── content.css        # Styles for overlay & toast
+│   ├── background.js      # Service worker (icon click, screenshot, injection, offscreen routing)
+│   ├── content.js         # Overlay selection, crop, result dialog orchestration
+│   ├── content.css        # Styles for overlay
+│   ├── offscreen.html     # Isolated MV3 offscreen document (same-origin Tesseract host)
+│   ├── offscreen.js       # Offscreen OCR controller
 │   ├── icons/             # Extension icons
 │   └── lib/
-│       ├── ocr/           # Helper modules (config, toast, logger, clipboard)
+│       ├── ocr/           # Helper modules (config, toast, logger, clipboard, engine)
 │       ├── ui/result.js   # Protected, editable result dialog
 │       ├── tesseract.min.js … # Local Tesseract.js assets (vendor)
 ├── deploy/                ← GENERATED (npm run build) – load in Chrome
@@ -55,4 +57,4 @@ Always edit files in `src/` and run the build script.
 
 ## Privacy & Security
 
-The extension works 100% locally and only requests `activeTab` and `scripting`.
+The extension works 100% locally and only requests `activeTab`, `scripting`, and `offscreen`.

@@ -5,15 +5,18 @@
  *  - das Canvas-Overlay zur Bereichsauswahl mit der Maus
  *  - ESC-Abbruch
  *  - das exakte Zuschneiden des Screenshots anhand seiner realen Aufloesung
- *  - die lokale OCR-Erkennung via Tesseract.js (offline)
+ *  - die Weiterleitung des Ausschnitts an das isolierte MV3 Offscreen Document
+ *    zur lokalen OCR-Erkennung via Tesseract.js (offline)
  *
- * Querschnittsfunktionen liegen als Helper-Module unter lib/ocr/ und werden
- * ueber den gemeinsamen Namespace `self.Ocr` angesprochen (INJEKTIONSREIHEN-
- * FOLGE beachten: config -> toast -> logger -> clipboard -> content.js):
- *  - lib/ocr/config.js     -> Ocr.Config                             (Konstanten)
- *  - lib/ocr/toast.js      -> Ocr.showToast()                        (Status-Toast)
- *  - lib/ocr/logger.js     -> Ocr.log() / showError() / checkTesseractLoaded()
- *  - lib/ocr/clipboard.js  -> Ocr.copyToClipboard()                  (Zwischenablage)
+ * Querschnittsfunktionen liegen als Helper-Module unter lib/ocr/ und lib/ui/
+ * und werden ueber den gemeinsamen Namespace `self.Ocr` angesprochen
+ * (INJEKTIONSREIHENFOLGE beachten: config -> toast -> logger -> clipboard ->
+ * ui/result -> content.js):
+ *  - lib/ocr/config.js     -> Ocr.Config            (Konstanten)
+ *  - lib/ocr/toast.js      -> Ocr.showToast()       (Status-Toast)
+ *  - lib/ocr/logger.js     -> Ocr.log() / showError()
+ *  - lib/ocr/clipboard.js  -> Ocr.copyToClipboard() (Zwischenablage)
+ *  - lib/ui/result.js      -> Ocr.Result            (Ergebnis-Dialog im closed Shadow DOM)
  *
  * Sicherheitsmerkmale:
  *  - IIFE-Guard verhindert Mehrfach-Initialisierung
@@ -53,7 +56,7 @@
 
   let activeOverlay = null; // aktuelles canvas-Element
   let selectionInProgress = false;
-  let activeOcrOperation = null;
+  let activeOcrRequest = null;
   let ocrInProgress = false;
 
   function createOcrAbortError() {
@@ -63,71 +66,36 @@
   }
 
   function isOcrAbortError(error) {
-    return error && error.name === "OcrAbortError";
+    return Boolean(error && error.name === "OcrAbortError");
   }
 
-  /**
-   * Verwaltet alle Worker einer OCR-Ausfuehrung. Worker werden direkt nach
-   * ihrer asynchronen Erstellung registriert; damit kann auch eine teilweise
-   * fehlgeschlagene parallele Initialisierung vollstaendig aufgeraeumt werden.
-   */
-  function createOcrOperation() {
-    let cancelled = false;
-    let rejectCancellation;
-    const workers = new Set();
-    const terminations = new Map();
-    const cancellation = new Promise((resolve, reject) => {
-      rejectCancellation = reject;
-    });
-    // Der Handler verhindert eine unbehandelte Rejection, falls der Abbruch
-    // genau zwischen zwei asynchronen OCR-Schritten angefordert wird.
-    cancellation.catch(() => {});
-
-    function terminateWorker(worker) {
-      if (terminations.has(worker)) return terminations.get(worker);
-      const termination = Promise.resolve()
-        .then(() => worker.terminate())
-        .catch((termErr) =>
-          Ocr.log("Worker-Terminierung fehlgeschlagen:", termErr)
-        );
-      terminations.set(worker, termination);
-      return termination;
+  function createRequestId() {
+    if (
+      typeof crypto !== "undefined" &&
+      typeof crypto.randomUUID === "function"
+    ) {
+      return crypto.randomUUID();
     }
-
-    async function terminateWorkers() {
-      await Promise.all(Array.from(workers, terminateWorker));
-    }
-
-    return {
-      get cancelled() {
-        return cancelled;
-      },
-      cancellation,
-      registerWorker(worker) {
-        workers.add(worker);
-        // Falls der Worker erst nach einem Abbruch fertig initialisiert wird,
-        // darf er nicht unbemerkt weiterlaufen.
-        if (cancelled) void terminateWorker(worker);
-      },
-      abort() {
-        if (cancelled) return;
-        cancelled = true;
-        rejectCancellation(createOcrAbortError());
-        void terminateWorkers();
-      },
-      terminateWorkers,
-    };
-  }
-
-  function waitForOcrStep(promise, operation) {
-    return Promise.race([promise, operation.cancellation]);
+    return "ocr-" + Date.now() + "-" + Math.random().toString(36).slice(2, 10);
   }
 
   function cancelActiveOcr() {
-    if (!activeOcrOperation) return false;
+    if (!activeOcrRequest) return false;
     Ocr.log("OCR-Abbruch angefordert");
-    activeOcrOperation.abort();
+    if (activeOcrRequest.cancelRequested) return true;
+    activeOcrRequest.cancelRequested = true;
     Ocr.showToast("Cancelling text recognition …");
+    Promise.resolve()
+      .then(() =>
+        chrome.runtime.sendMessage({
+          target: "background",
+          action: "cancel_ocr",
+          requestId: activeOcrRequest.id,
+        })
+      )
+      .catch((err) => {
+        Ocr.log("OCR-Abbruchnachricht fehlgeschlagen:", err);
+      });
     return true;
   }
 
@@ -143,7 +111,7 @@
      --------------------------------------------------------------------- */
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (!message) return;
+    if (!message || (message.target && message.target !== "content")) return;
 
     // Der Background-Service-Worker ist in MV3 nicht persistent. Dieser Ping
     // ersetzt einen fluechtigen "bereits injiziert"-Cache nach Neustarts.
@@ -151,8 +119,8 @@
       sendResponse({
         ready:
           window.__ocrInitialized === true &&
-          typeof window.Tesseract === "object" &&
-          typeof window.Ocr === "object",
+          typeof window.Ocr === "object" &&
+          typeof window.Ocr.Result === "object",
       });
       return;
     }
@@ -180,15 +148,6 @@
           "Start",
           new Error("Invalid image data received (not a data:image/* URI)."),
           { type: typeof message.imageUri }
-        );
-        return;
-      }
-      if (!Ocr.checkTesseractLoaded()) {
-        Ocr.showError(
-          "Start",
-          new Error(
-            "Tesseract.js is not loaded. The page's CSP may be blocking lib/tesseract.min.js."
-          )
         );
         return;
       }
@@ -402,8 +361,8 @@
       return;
     }
 
-    const operation = createOcrOperation();
-    activeOcrOperation = operation;
+    const request = { id: createRequestId(), cancelRequested: false };
+    activeOcrRequest = request;
     ocrInProgress = true;
     Ocr.showToast("Recognizing text (local) …\nPress Esc to cancel");
     Ocr.log("Starte OCR fuer Auswahl", JSON.stringify(rect), "Bild", img.naturalWidth + "x" + img.naturalHeight);
@@ -420,7 +379,35 @@
         return;
       }
 
-      const result = await recognizeText(croppedDataUrl, operation);
+      if (request.cancelRequested) {
+        throw createOcrAbortError();
+      }
+
+      const response = await chrome.runtime.sendMessage({
+        target: "background",
+        action: "run_ocr",
+        requestId: request.id,
+        dataUrl: croppedDataUrl,
+      });
+
+      if (!response || typeof response !== "object") {
+        if (request.cancelRequested) {
+          throw createOcrAbortError();
+        }
+        throw new Error("OCR service did not return a response.");
+      }
+
+      if (!response.ok) {
+        if (response.aborted || request.cancelRequested) {
+          throw createOcrAbortError();
+        }
+        const errInfo = response.error || {};
+        const err = new Error(errInfo.message || "Text recognition failed.");
+        if (errInfo.name) err.name = errInfo.name;
+        throw err;
+      }
+
+      const result = response.result || {};
       const trimmed = (result.text || "").trim();
 
       if (trimmed) {
@@ -452,7 +439,7 @@
         Ocr.log("OCR fertig, kein Text");
       }
     } catch (err) {
-      if (isOcrAbortError(err)) {
+      if (isOcrAbortError(err) || request.cancelRequested) {
         Ocr.showToast("Text recognition cancelled.");
         Ocr.log("OCR abgebrochen");
       } else {
@@ -461,144 +448,12 @@
         });
       }
     } finally {
-      // Der Status wird erst nach dem terminierenden recognizeText-finally
-      // freigegeben; so kann keine zweite Auswahl neue Worker starten.
-      if (activeOcrOperation === operation) {
-        activeOcrOperation = null;
+      // Der Status wird erst nach Abschluss der Offscreen-Antwort freigegeben;
+      // so kann keine zweite Auswahl waehrend laufender OCR starten.
+      if (activeOcrRequest === request) {
+        activeOcrRequest = null;
         ocrInProgress = false;
       }
-    }
-  }
-
-  /** Anzeigename fuer eine Tesseract-Sprachkennung (Fallback: Kennung selbst). */
-  function languageLabel(lang) {
-    const LABELS = { eng: "English", deu: "German" };
-    return LABELS[lang] || lang;
-  }
-
-  /** Ein recognize() inkl. Extraktion von Text + Konfidenz. */
-  async function recognizeWith(worker, dataUrl, lang) {
-    const ret = await worker.recognize(dataUrl);
-    return {
-      text: ret && ret.data ? ret.data.text : "",
-      // data.confidence: 0–100 (Tesseract-Gesamtkonfidenz der Erkennung)
-      confidence:
-        ret && ret.data && typeof ret.data.confidence === "number"
-          ? ret.data.confidence
-          : 0,
-      language: lang,
-    };
-  }
-
-  /** Erstellt einen Tesseract-Worker fuer EINE Sprache (v5-API). */
-  function createOcrWorker(lang) {
-    return Tesseract.createWorker(lang, 1, {
-      workerPath: CONFIG.tesseract.workerPath,
-      corePath: CONFIG.tesseract.corePath,
-      langPath: CONFIG.tesseract.langPath,
-      gzip: true,
-      workerBlobURL: CONFIG.tesseract.workerBlobURL,
-      logger: (m) => Ocr.log("Tesseract[" + lang + "]:", m.status, m.progress != null ? (m.progress * 100).toFixed(0) + "%" : ""),
-      errorHandler: (e) => Ocr.log("Tesseract-Worker-Fehler[" + lang + "]:", e),
-    });
-  }
-
-  async function recognizeText(dataUrl, operation) {
-    if (!Ocr.checkTesseractLoaded()) {
-      throw new Error(
-        "Tesseract.js is not available (global 'Tesseract' missing). " +
-          "lib/tesseract.min.js was likely blocked by the page's CSP."
-      );
-    }
-
-    const langs = CONFIG.ocrLanguages;
-    Ocr.log("Erstelle", langs.length, "Tesseract-Worker parallel:", langs.join(", "));
-
-    // Sprache wird NICHT von Tesseract gemeldet, wenn mehrere Sprachen in
-    // einem Worker geladen sind. Trick: pro Sprache ein eigener Worker
-    // (parallel initialisiert -> Init-Latenz bleibt ~gleich), dann gewinnt
-    // das Ergebnis mit der hoechsten Konfidenz.
-    const t0 = Date.now();
-    let cspDirective = null;
-    function onSecurityPolicyViolation(event) {
-      const directive = event && (event.effectiveDirective || event.violatedDirective);
-      if (directive && /^(worker-src|child-src|script-src)/.test(directive)) {
-        cspDirective = directive;
-      }
-    }
-    document.addEventListener("securitypolicyviolation", onSecurityPolicyViolation);
-
-    try {
-      let workers;
-      try {
-        workers = await waitForOcrStep(
-          Promise.all(
-            langs.map(async (lang) => {
-              const worker = await createOcrWorker(lang);
-              operation.registerWorker(worker);
-              return worker;
-            })
-          ),
-          operation
-        );
-      } catch (initErr) {
-        if (isOcrAbortError(initErr)) throw initErr;
-        if (cspDirective) {
-          throw new Error(
-            "Blocked by this page's Content Security Policy (" +
-              cspDirective +
-              "). This website does not allow local OCR web workers (blob:)."
-          );
-        }
-        if (!initErr || !initErr.message) {
-          throw new Error(
-            "Could not start local OCR worker. The page's Content Security Policy (worker-src) may be blocking web workers."
-          );
-        }
-        throw initErr;
-      }
-      Ocr.log("Worker bereit nach", Date.now() - t0, "ms");
-
-      // Schwellwert fuer eindeutige Sprachzuordnung: Besteht zwischen der
-      // besten und der zweitbesten Konfidenz ein kleinerer Abstand, ist die
-      // Sprache nicht sicher unterscheidbar und wird dem Nutzer NICHT
-      // angezeigt (verhindert irrefuehrende Angaben bei sprachneutralem Text
-      // wie Ziffern oder Latein, das in beiden Sprachen vorkommt).
-      const LANG_UNCERTAINTY_MARGIN = CONFIG.langUncertaintyMargin;
-
-      const results = await waitForOcrStep(
-        Promise.all(
-          workers.map((worker, i) => recognizeWith(worker, dataUrl, langs[i]))
-        ),
-        operation
-      );
-      // Hoechste Konfidenz gewinnt; bei Gleichstand gewinnt die erste Sprache.
-      const sorted = results.slice().sort((a, b) => b.confidence - a.confidence);
-      const best = sorted[0];
-      const runnerUp = sorted[1];
-      // Sprache nur melden, wenn eindeutig: deutlicher Vorsprung ODER nur
-      // eine Sprache konfiguriert (dann trivial eindeutig).
-      const unambiguous = langs.length === 1 || !runnerUp ||
-        best.confidence - runnerUp.confidence >= LANG_UNCERTAINTY_MARGIN;
-      Ocr.log(
-        "Bestes Ergebnis: Sprache", best.language,
-        "Konfidenz", best.confidence.toFixed(1),
-        "Zweitbeste", runnerUp ? runnerUp.language + " " + runnerUp.confidence.toFixed(1) : "-",
-        "eindeutig:", unambiguous,
-        "Zeichen", (best.text || "").trim().length
-      );
-      return {
-        text: best.text,
-        confidence: best.confidence,
-        // null => Sprache nicht eindeutig ermittelbar (keine Anzeige im Toast)
-        language: unambiguous ? languageLabel(best.language) : null,
-      };
-    } finally {
-      document.removeEventListener("securitypolicyviolation", onSecurityPolicyViolation);
-      // Umfasst auch Fehler bei Promise.all(createWorker): alle bis dahin
-      // registrierten Worker werden immer terminiert.
-      await operation.terminateWorkers();
-      Ocr.log("Worker terminiert");
     }
   }
 

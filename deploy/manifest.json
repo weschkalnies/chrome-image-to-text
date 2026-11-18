@@ -1,12 +1,17 @@
 {
   "manifest_version": 3,
   "name": "LocalOCR: Screen to Text",
-  "version": "1.0.9",
+  "version": "1.1.0",
   "description": "Select any area on screen and convert it to text locally using Tesseract OCR. 100% offline.",
+  "minimum_chrome_version": "116",
   "permissions": [
     "activeTab",
-    "scripting"
+    "scripting",
+    "offscreen"
   ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
   "action": {
     "default_title": "Start Screen OCR",
     "default_icon": {
@@ -25,22 +30,5 @@
   },
   "background": {
     "service_worker": "background.js"
-  },
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "lib/tesseract.min.js",
-        "lib/worker.min.js",
-        "lib/tesseract-core-simd.wasm.js",
-        "lib/tesseract-core-simd.wasm",
-        "lib/tesseract-core-simd-lstm.wasm.js",
-        "lib/tesseract-core-simd-lstm.wasm",
-        "lib/eng.traineddata.gz",
-        "lib/deu.traineddata.gz"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
-    }
-  ]
+  }
 }

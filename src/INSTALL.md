@@ -24,7 +24,7 @@ bundled locally in `lib/` (100% offline).
 
 - Does not run on browser-internal pages (`chrome://`, Chrome Web Store,
   `about:`, `view-source:`).
-- Pages with a strict CSP may block loading the Tesseract web worker →
-  an error toast appears.
+- OCR runs inside an isolated MV3 offscreen document (`offscreen.html`),
+  independent of website Content Security Policies.
 - On the first OCR run, Tesseract loads the WASM core and language data
   from `lib/` (locally, no network) – this may take 1–2 seconds.

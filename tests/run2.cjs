@@ -36,13 +36,22 @@ function startTestServer() {
         res.end();
         return;
       }
-      if (req.url !== "/") {
-        res.writeHead(404);
-        res.end();
+      if (req.url === "/") {
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(fs.readFileSync(TEST_PAGE));
         return;
       }
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(fs.readFileSync(TEST_PAGE));
+      if (req.url === "/strict-csp") {
+        res.writeHead(200, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Content-Security-Policy":
+            "default-src 'self'; script-src 'none'; worker-src 'none'; child-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'",
+        });
+        res.end(fs.readFileSync(TEST_PAGE));
+        return;
+      }
+      res.writeHead(404);
+      res.end();
     });
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
@@ -147,7 +156,7 @@ async function waitForFinalToast(context, page, timeoutMs) {
     const text = await getClosedShadowToastText(context, page).catch(() => null);
     if (!text) continue;
     if (/Text copied to clipboard!/i.test(text)) return text;
-    if (/(Fehler|failed|No text recognized|unavailable)/i.test(text)) {
+    if (/(Fehler|failed|No text recognized|unavailable|Content Security Policy)/i.test(text)) {
       throw new Error("OCR meldete keinen Erfolg: " + text);
     }
   }
@@ -185,6 +194,73 @@ async function clickClosedShadowButton(context, page, label) {
   } finally {
     await session.detach();
   }
+}
+
+async function runOcrFlowOnPage(context, page, serviceWorker, url, label, logs) {
+  const logStartIndex = logs.length;
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto(url, { waitUntil: "load", timeout: 10000 });
+  await page.bringToFront();
+  await page.waitForSelector(".stage", { timeout: 5000 });
+
+  await page.evaluate(() => {
+    window.__cspViolations = [];
+    document.addEventListener("securitypolicyviolation", (event) => {
+      window.__cspViolations.push(event.effectiveDirective || event.violatedDirective || "unknown");
+    });
+  });
+
+  const trigger = await serviceWorker.evaluate(async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab) throw new Error("Kein aktiver Tab gefunden.");
+    const imageUri = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
+    await ensureOcrContentScript(tab.id);
+    await chrome.tabs.sendMessage(tab.id, { action: "start_selection", imageUri });
+    return { imageLength: imageUri.length };
+  });
+  assert(trigger.imageLength > 0, "Screenshot fuer OCR wurde nicht erzeugt (" + label + ").");
+
+  await page.waitForSelector("#ocr-overlay-canvas", { timeout: 8000 });
+  const x1 = 256;
+  const y1 = 252;
+  const x2 = 1024;
+  const y2 = 468;
+  await page.mouse.move(x1, y1);
+  await page.mouse.down();
+  await page.mouse.move(x2, y2, { steps: 12 });
+  await page.mouse.up();
+  log("[" + label + "] Auswahl gezogen (" + x1 + "," + y1 + ")->(" + x2 + "," + y2 + ")");
+
+  await page.waitForSelector("#ocr-result-host", { state: "attached", timeout: 45000 });
+  const resultPrivacy = await page.evaluate(() => {
+    const host = document.querySelector("#ocr-result-host");
+    return {
+      hasOpenShadowRoot: Boolean(host && host.shadowRoot),
+      pageText: host ? host.textContent : "",
+      cspViolations: window.__cspViolations || [],
+    };
+  });
+  assert(!resultPrivacy.hasOpenShadowRoot, "Das OCR-Ergebnis darf keinen offenen Shadow-DOM verwenden.");
+  assert(!resultPrivacy.pageText.includes(EXPECTED_TEXT), "Das OCR-Ergebnis ist im Seiten-DOM lesbar.");
+  assert(
+    resultPrivacy.cspViolations.length === 0,
+    "Unerwartete CSP-Verletzungen auf " + label + ": " + JSON.stringify(resultPrivacy.cspViolations)
+  );
+
+  await clickClosedShadowButton(context, page, "Copy");
+  const toast = await waitForFinalToast(context, page, 5000);
+  const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
+  assert(
+    normalizeText(clipboardText) === EXPECTED_TEXT,
+    "[" + label + "] Unerwarteter OCR-Text: " + JSON.stringify(clipboardText)
+  );
+
+  const runLogs = logs.slice(logStartIndex);
+  const hasCspError = runLogs.some((entry) =>
+    /Content Security Policy|securitypolicyviolation|Refused to load|Refused to create/i.test(entry)
+  );
+  assert(!hasCspError, "[" + label + "] Unerwarteter CSP-Fehler im Log.");
+  log("E2E [" + label + "] erfolgreich: " + toast + " | OCR=" + JSON.stringify(clipboardText));
 }
 
 const logs = [];
@@ -235,10 +311,6 @@ const log = (message) => {
     const page = context.pages()[0] || await context.newPage();
     page.on("console", (message) => log("[page " + message.type() + "] " + message.text()));
     page.on("pageerror", (error) => log("[pageerror] " + error.message));
-    await page.setViewportSize({ width: 1280, height: 720 });
-    await page.goto(testOrigin, { waitUntil: "load", timeout: 10000 });
-    await page.bringToFront();
-    await page.waitForSelector(".stage", { timeout: 5000 });
 
     let serviceWorker = context.serviceWorkers().find((worker) => worker.url().includes(extensionId));
     if (!serviceWorker) {
@@ -247,63 +319,16 @@ const log = (message) => {
     }
     assert(serviceWorker, "Service Worker der Test-Extension wurde nicht gefunden.");
 
-    const trigger = await serviceWorker.evaluate(async () => {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab) throw new Error("Kein aktiver Tab gefunden.");
-      const imageUri = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: [
-          "lib/tesseract.min.js",
-          "lib/ocr/config.js",
-          "lib/ocr/toast.js",
-          "lib/ocr/logger.js",
-          "lib/ocr/clipboard.js",
-          "lib/ui/result.js",
-          "content.js",
-        ],
-      });
-      await chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: ["content.css"] });
-      await chrome.tabs.sendMessage(tab.id, { action: "start_selection", imageUri });
-      return { imageLength: imageUri.length };
-    });
-    assert(trigger.imageLength > 0, "Screenshot fuer OCR wurde nicht erzeugt.");
+    await runOcrFlowOnPage(context, page, serviceWorker, testOrigin + "/", "default", logs);
 
-    await page.waitForSelector("#ocr-overlay-canvas", { timeout: 8000 });
-    const x1 = 256;
-    const y1 = 252;
-    const x2 = 1024;
-    const y2 = 468;
-    await page.mouse.move(x1, y1);
-    await page.mouse.down();
-    await page.mouse.move(x2, y2, { steps: 12 });
-    await page.mouse.up();
-    log("Auswahl gezogen (" + x1 + "," + y1 + ")->(" + x2 + "," + y2 + ")");
-
-    await page.waitForSelector("#ocr-result-host", { state: "attached", timeout: 45000 });
-    const resultPrivacy = await page.evaluate(() => {
-      const host = document.querySelector("#ocr-result-host");
-      return {
-        hasOpenShadowRoot: Boolean(host && host.shadowRoot),
-        pageText: host ? host.textContent : "",
-      };
-    });
-    assert(!resultPrivacy.hasOpenShadowRoot, "Das OCR-Ergebnis darf keinen offenen Shadow-DOM verwenden.");
-    assert(!resultPrivacy.pageText.includes(EXPECTED_TEXT), "Das OCR-Ergebnis ist im Seiten-DOM lesbar.");
-
-    await clickClosedShadowButton(context, page, "Copy");
-    const toast = await waitForFinalToast(context, page, 5000);
-    const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
-    assert(
-      normalizeText(clipboardText) === EXPECTED_TEXT,
-      "Unerwarteter OCR-Text: " + JSON.stringify(clipboardText)
-    );
-    log("E2E erfolgreich: " + toast + " | OCR=" + JSON.stringify(clipboardText));
+    // Zwischenablage explizit leeren, um frische OCR-Erkennung unter strikter CSP nachzuweisen.
+    await page.evaluate(() => navigator.clipboard.writeText(""));
+    await runOcrFlowOnPage(context, page, serviceWorker, testOrigin + "/strict-csp", "strict-csp", logs);
   } catch (error) {
     console.error("E2E FEHLER:", error && error.stack ? error.stack : error);
     console.error("===== Relevante OCR-Logs =====");
     logs
-      .filter((entry) => entry.includes("[OCR]") || entry.toLowerCase().includes("tesseract"))
+      .filter((entry) => entry.includes("[OCR]") || entry.toLowerCase().includes("tesseract") || entry.toLowerCase().includes("csp"))
       .forEach((entry) => console.error(entry));
     process.exitCode = 1;
   } finally {

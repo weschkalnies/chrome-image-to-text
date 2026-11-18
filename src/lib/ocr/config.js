@@ -28,10 +28,10 @@
       workerPath: chrome.runtime.getURL("lib/worker.min.js"),
       corePath: chrome.runtime.getURL("lib/"),
       langPath: chrome.runtime.getURL("lib/"),
-      // Load worker as Blob -> bypasses page-CSP (worker-src) restrictions
-      // that would block creating the Tesseract web worker on foreign pages.
-      // Very common failure cause in extensions.
-      workerBlobURL: true,
+      // OCR runs inside the extension's offscreen document (chrome-extension://<id>),
+      // where lib/worker.min.js is same-origin and loads directly via
+      // new Worker(workerPath) without Blob URLs.
+      workerBlobURL: false,
     },
   };
 })(self.Ocr = self.Ocr || {});

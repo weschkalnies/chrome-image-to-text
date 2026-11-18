@@ -12,8 +12,8 @@ and OCR results never leave your device.
 - Mouse-based selection, cancellable with `Esc`
 - Editable result dialog with confidence, language and explicit copy action
 - High-DPI and screenshot scaling based on the actual image dimensions
-- No persistent host permissions: only `activeTab` and `scripting`
-- Robust worker and injection management for Manifest V3
+- No persistent host permissions: only `activeTab`, `scripting`, and `offscreen`
+- Robust worker, offscreen OCR, and injection management for Manifest V3
 
 ## Quick start
 
@@ -67,9 +67,11 @@ explicit copy action.
 ```text
 chrome-image-to-text/
 ├── src/                    # extension source code
-│   ├── background.js        # service worker: screenshot and injection
-│   ├── content.js           # selection, crop and OCR orchestration
-│   ├── content.css          # selection and toast styles
+│   ├── background.js        # service worker: screenshot, injection, offscreen routing
+│   ├── content.js           # selection, crop and UI orchestration
+│   ├── content.css          # selection overlay styles
+│   ├── offscreen.html       # isolated MV3 offscreen document for local OCR
+│   ├── offscreen.js         # offscreen OCR controller
 │   ├── icons/               # icon family
 │   └── lib/                 # OCR, UI and local Tesseract resources
 ├── deploy/                  # generated extension loaded in Chrome
@@ -81,8 +83,18 @@ chrome-image-to-text/
 ## Privacy and security
 
 - No cloud, telemetry or external OCR requests.
+- OCR runs inside an isolated MV3 offscreen document (`offscreen.html`) without
+  `web_accessible_resources` (`<all_urls>`), keeping local Tesseract assets
+  inaccessible to visited websites.
 - The editable result dialog uses a closed Shadow DOM, so scripts on the
   visited website cannot read the recognized text.
+- **Chrome Web Store Enhanced Safe Browsing notice:** If you have Chrome's
+  *Enhanced Safe Browsing* enabled, you may see *"This extension is not trusted
+  by Enhanced Safe Browsing"* when installing from the Chrome Web Store. This is
+  Google's standard automated notice for newer Chrome Web Store developer
+  accounts—not a security finding—and disappears automatically after a few
+  months of policy-compliant account history. The full source code is open in
+  this repository for inspection or local building (`npm run build`).
 
 ## Release checklist
 

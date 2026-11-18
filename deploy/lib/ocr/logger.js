@@ -51,7 +51,9 @@
         }
       }
     }
-    Ocr.showToast(line, "error", Ocr.Config.toastErrorMs, true);
+    if (typeof Ocr.showToast === "function") {
+      Ocr.showToast(line, "error", Ocr.Config.toastErrorMs, true);
+    }
   }
 
   /** Checks whether Tesseract is globally available and logs its version. */
@@ -66,6 +68,7 @@
   }
 
   Ocr.log = log;
+  Ocr.formatErrorMessage = formatErrorMessage;
   Ocr.showError = showError;
   Ocr.checkTesseractLoaded = checkTesseractLoaded;
 })(self.Ocr = self.Ocr || {});

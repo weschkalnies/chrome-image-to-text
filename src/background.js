@@ -5,13 +5,14 @@
  *  - Klick auf das Extension-Icon abfangen
  *  - Sicherheitsprüfung des aktiven Tabs (keine Browser-internen Seiten)
  *  - Screenshot des sichtbaren Fensters erstellen
- *  - Content-Skript + Tesseract race-sicher pro Tab injizieren
+ *  - Content-Skript race-sicher pro Tab injizieren
  *  - Bilddaten an das Content-Skript senden
+ *  - OCR-Anfragen sicher an das isolierte MV3 Offscreen Document routen
  *
  * Sicherheitshinweis:
- *  - Wir verwenden ausschließlich `activeTab` + `scripting`. Es gibt KEINE
- *    dauerhaften Host-Permissions. Zugriff auf den Tab erfolgt nur nach
- *    explizitem Nutzer-Klick (transient activation).
+ *  - Wir verwenden ausschließlich `activeTab`, `scripting` und `offscreen`.
+ *    Es gibt KEINE dauerhaften Host-Permissions. Zugriff auf den Tab erfolgt
+ *    nur nach explizitem Nutzer-Klick (transient activation).
  *  - `tab.url` ist nur dank `activeTab` verfügbar; wir prüfen daher
  *    defensiv auf undefined.
  */
@@ -21,7 +22,6 @@
 // nur während einer laufenden Injektion und verhindert parallele Klicks.
 const INJECTION_PROMISES = new Map();
 const CONTENT_SCRIPT_FILES = [
-  "lib/tesseract.min.js",
   "lib/ocr/config.js",
   "lib/ocr/toast.js",
   "lib/ocr/logger.js",
@@ -29,6 +29,13 @@ const CONTENT_SCRIPT_FILES = [
   "lib/ui/result.js",
   "content.js",
 ];
+
+const OFFSCREEN_DOCUMENT_PATH = "offscreen.html";
+const OFFSCREEN_IDLE_CLOSE_MS = 15000;
+const ACTIVE_OCR_REQUESTS = new Map();
+let OFFSCREEN_CREATE_PROMISE = null;
+let OFFSCREEN_CLOSE_PROMISE = null;
+let OFFSCREEN_IDLE_TIMER = null;
 
 async function isOcrContentScriptReady(tabId) {
   try {
@@ -42,7 +49,7 @@ async function isOcrContentScriptReady(tabId) {
 }
 
 async function injectOcrContentScript(tabId) {
-  console.log("[OCR] Injiziere tesseract.min.js + lib/ocr/* + content.js in Tab", tabId);
+  console.log("[OCR] Injiziere lib/ocr/* + content.js in Tab", tabId);
   await Promise.all([
     chrome.scripting.executeScript({
       target: { tabId },
@@ -198,3 +205,318 @@ chrome.action.onClicked.addListener(async (tab) => {
     );
   }
 });
+
+/* -------------------------------------------------------------------------
+   MV3 Offscreen Document Lifecycle & OCR Message Routing
+   ----------------------------------------------------------------------- */
+
+function clearOffscreenIdleTimer() {
+  if (OFFSCREEN_IDLE_TIMER !== null) {
+    clearTimeout(OFFSCREEN_IDLE_TIMER);
+    OFFSCREEN_IDLE_TIMER = null;
+  }
+}
+
+async function hasOffscreenDocument() {
+  if (!chrome.runtime || typeof chrome.runtime.getContexts !== "function") {
+    return false;
+  }
+  const offscreenUrl = chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH);
+  const contexts = await chrome.runtime.getContexts({
+    contextTypes: ["OFFSCREEN_DOCUMENT"],
+    documentUrls: [offscreenUrl],
+  });
+  return Array.isArray(contexts) && contexts.length > 0;
+}
+
+async function waitForOffscreenReady(maxAttempts = 10, delayMs = 25) {
+  let lastError = null;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        target: "offscreen",
+        action: "offscreen_ping",
+      });
+      if (response && response.ready === true) {
+        if (response.tesseractLoaded === false) {
+          throw new Error("Tesseract.js konnte im Offscreen-Dokument nicht geladen werden.");
+        }
+        return;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+    if (attempt < maxAttempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  throw lastError || new Error("Offscreen-Dokument antwortet nicht.");
+}
+
+async function ensureOffscreenDocument() {
+  clearOffscreenIdleTimer();
+  while (OFFSCREEN_CLOSE_PROMISE) {
+    await OFFSCREEN_CLOSE_PROMISE.catch(() => {});
+  }
+  if (OFFSCREEN_CREATE_PROMISE) {
+    return OFFSCREEN_CREATE_PROMISE;
+  }
+
+  const operation = (async () => {
+    if (!(await hasOffscreenDocument())) {
+      const reason =
+        (chrome.offscreen &&
+          chrome.offscreen.Reason &&
+          chrome.offscreen.Reason.WORKERS) ||
+        "WORKERS";
+      await chrome.offscreen.createDocument({
+        url: OFFSCREEN_DOCUMENT_PATH,
+        reasons: [reason],
+        justification:
+          "Run local Tesseract.js OCR Web Workers isolated from webpage Content Security Policies.",
+      });
+    }
+    await waitForOffscreenReady();
+  })();
+  OFFSCREEN_CREATE_PROMISE = operation;
+
+  try {
+    await operation;
+  } finally {
+    if (OFFSCREEN_CREATE_PROMISE === operation) {
+      OFFSCREEN_CREATE_PROMISE = null;
+    }
+  }
+}
+
+async function closeOffscreenDocumentIfIdle() {
+  clearOffscreenIdleTimer();
+  if (ACTIVE_OCR_REQUESTS.size > 0 || OFFSCREEN_CREATE_PROMISE) {
+    return;
+  }
+  if (OFFSCREEN_CLOSE_PROMISE) {
+    return OFFSCREEN_CLOSE_PROMISE;
+  }
+
+  const operation = (async () => {
+    if (!(await hasOffscreenDocument())) {
+      return;
+    }
+    if (ACTIVE_OCR_REQUESTS.size > 0 || OFFSCREEN_CREATE_PROMISE) {
+      return;
+    }
+    await chrome.offscreen.closeDocument();
+  })();
+  OFFSCREEN_CLOSE_PROMISE = operation;
+
+  try {
+    await operation;
+  } catch (error) {
+    console.error("[OCR] Schliessen des Offscreen-Dokuments fehlgeschlagen:", error);
+  } finally {
+    if (OFFSCREEN_CLOSE_PROMISE === operation) {
+      OFFSCREEN_CLOSE_PROMISE = null;
+    }
+  }
+}
+
+function scheduleOffscreenIdleClose() {
+  clearOffscreenIdleTimer();
+  if (ACTIVE_OCR_REQUESTS.size > 0) {
+    return;
+  }
+  OFFSCREEN_IDLE_TIMER = setTimeout(() => {
+    OFFSCREEN_IDLE_TIMER = null;
+    void closeOffscreenDocumentIfIdle();
+  }, OFFSCREEN_IDLE_CLOSE_MS);
+}
+
+function serializeOcrError(error) {
+  return {
+    name: (error && error.name) || "Error",
+    message:
+      error && typeof error.message === "string" && error.message.trim()
+        ? error.message
+        : String(error || "Unknown error"),
+  };
+}
+
+function createCancelledResponse() {
+  return {
+    ok: false,
+    aborted: true,
+    error: {
+      name: "OcrAbortError",
+      message: "Text recognition was cancelled.",
+    },
+  };
+}
+
+async function handleRunOcrRequest(message, sender) {
+  if (!sender || !sender.tab || typeof sender.tab.id !== "number") {
+    return {
+      ok: false,
+      error: { name: "Error", message: "Missing sender tab for OCR request." },
+    };
+  }
+  const requestId = message.requestId;
+  if (typeof requestId !== "string" || !requestId) {
+    return {
+      ok: false,
+      error: { name: "Error", message: "Missing OCR requestId." },
+    };
+  }
+  if (
+    typeof message.dataUrl !== "string" ||
+    !message.dataUrl.startsWith("data:image/")
+  ) {
+    return {
+      ok: false,
+      error: { name: "Error", message: "Invalid image data received." },
+    };
+  }
+  if (ACTIVE_OCR_REQUESTS.has(requestId)) {
+    return {
+      ok: false,
+      error: { name: "Error", message: "Duplicate OCR requestId." },
+    };
+  }
+
+  const entry = { tabId: sender.tab.id, cancelled: false };
+  ACTIVE_OCR_REQUESTS.set(requestId, entry);
+  clearOffscreenIdleTimer();
+
+  try {
+    await ensureOffscreenDocument();
+    if (entry.cancelled) {
+      return createCancelledResponse();
+    }
+    const response = await chrome.runtime.sendMessage({
+      target: "offscreen",
+      action: "offscreen_run_ocr",
+      requestId,
+      dataUrl: message.dataUrl,
+    });
+    if (!response || typeof response !== "object") {
+      if (entry.cancelled) {
+        return createCancelledResponse();
+      }
+      return {
+        ok: false,
+        error: { name: "Error", message: "Offscreen OCR document did not respond." },
+      };
+    }
+    return response;
+  } catch (error) {
+    if (entry.cancelled) {
+      return createCancelledResponse();
+    }
+    return {
+      ok: false,
+      error: serializeOcrError(error),
+    };
+  } finally {
+    if (ACTIVE_OCR_REQUESTS.get(requestId) === entry) {
+      ACTIVE_OCR_REQUESTS.delete(requestId);
+    }
+    if (ACTIVE_OCR_REQUESTS.size === 0) {
+      scheduleOffscreenIdleClose();
+    }
+  }
+}
+
+async function cancelOcrRequest(requestId, requesterTabId) {
+  if (typeof requestId !== "string" || !requestId) {
+    return { ok: false, cancelled: false };
+  }
+  const entry = ACTIVE_OCR_REQUESTS.get(requestId);
+  if (
+    typeof requesterTabId === "number" &&
+    entry &&
+    entry.tabId !== requesterTabId
+  ) {
+    return { ok: false, cancelled: false };
+  }
+  if (entry) {
+    entry.cancelled = true;
+  }
+
+  try {
+    if (await hasOffscreenDocument()) {
+      const response = await chrome.runtime.sendMessage({
+        target: "offscreen",
+        action: "offscreen_cancel_ocr",
+        requestId,
+      });
+      return {
+        ok: true,
+        cancelled: Boolean(
+          (entry && entry.cancelled) || (response && response.cancelled)
+        ),
+      };
+    }
+  } catch (_error) {
+    // Offscreen-Dokument existiert evtl. nicht mehr.
+  }
+
+  return { ok: true, cancelled: Boolean(entry) };
+}
+
+async function cancelTabOcrRequests(tabId) {
+  const requestIds = [];
+  for (const [requestId, entry] of ACTIVE_OCR_REQUESTS.entries()) {
+    if (entry.tabId === tabId) {
+      requestIds.push(requestId);
+    }
+  }
+  await Promise.all(
+    requestIds.map((requestId) => cancelOcrRequest(requestId, tabId))
+  );
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!message || message.target !== "background") {
+    return false;
+  }
+
+  if (message.action === "run_ocr") {
+    void handleRunOcrRequest(message, sender).then(sendResponse, (error) => {
+      sendResponse({ ok: false, error: serializeOcrError(error) });
+    });
+    return true;
+  }
+
+  if (message.action === "cancel_ocr") {
+    const requesterTabId =
+      sender && sender.tab && typeof sender.tab.id === "number"
+        ? sender.tab.id
+        : undefined;
+    void cancelOcrRequest(message.requestId, requesterTabId).then(
+      sendResponse,
+      (error) => {
+        sendResponse({
+          ok: false,
+          cancelled: false,
+          error: serializeOcrError(error),
+        });
+      }
+    );
+    return true;
+  }
+
+  return false;
+});
+
+if (chrome.tabs && chrome.tabs.onRemoved) {
+  chrome.tabs.onRemoved.addListener((tabId) => {
+    void cancelTabOcrRequests(tabId);
+  });
+}
+
+if (chrome.tabs && chrome.tabs.onUpdated) {
+  chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+    if (changeInfo && changeInfo.status === "loading") {
+      void cancelTabOcrRequests(tabId);
+    }
+  });
+}

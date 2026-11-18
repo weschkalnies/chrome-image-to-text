@@ -1,8 +1,9 @@
 /**
- * Regressionstest fuer den OCR-Worker-Lebenszyklus in content.js.
+ * Regressionstest fuer den OCR-Worker-Lebenszyklus ueber content.js -> offscreen.js -> engine.js.
  *
  * Prueft ohne die echten Tesseract-Binaries:
- * - einen Fehler bei der parallelen Worker-Initialisierung,
+ * - Crop-Skalierung anhand der realen Screenshot-Aufloesung,
+ * - einen Fehler bei der parallelen Worker-Initialisierung (inkl. spaet aufloesender Worker),
  * - den Abbruch einer laufenden OCR mit Escape und
  * - die Sperre gegen parallele OCR-Ausfuehrungen.
  */
@@ -14,6 +15,8 @@ const { chromium } = require("playwright");
 const { resolveChrome } = require("./_env.cjs");
 
 const ROOT = path.resolve(__dirname, "..");
+const ENGINE_SCRIPT = fs.readFileSync(path.join(ROOT, "src", "lib", "ocr", "engine.js"), "utf8");
+const OFFSCREEN_SCRIPT = fs.readFileSync(path.join(ROOT, "src", "offscreen.js"), "utf8");
 const CONTENT_SCRIPT = fs.readFileSync(path.join(ROOT, "src", "content.js"), "utf8");
 const CONTENT_CSS = fs.readFileSync(path.join(ROOT, "src", "content.css"), "utf8");
 const TEST_IMAGE =
@@ -41,16 +44,65 @@ const MOCKS = `
   window.__ocrEvents = [];
   window.__ocrWorkers = [];
   window.__ocrMode = "partial-failure";
-  window.__ocrListener = null;
+  window.__ocrListeners = [];
   window.__cropDraws = [];
   const originalDrawImage = CanvasRenderingContext2D.prototype.drawImage;
   CanvasRenderingContext2D.prototype.drawImage = function (...args) {
     if (args.length === 9) window.__cropDraws.push(args.slice(1));
     return originalDrawImage.apply(this, args);
   };
+  window.__dispatchTabMessage = (message) => {
+    for (const listener of window.__ocrListeners) {
+      listener(message, {}, () => {});
+    }
+  };
   window.chrome = {
     runtime: {
-      onMessage: { addListener(listener) { window.__ocrListener = listener; } }
+      onMessage: {
+        addListener(listener) {
+          window.__ocrListeners.push(listener);
+        }
+      },
+      sendMessage(message) {
+        if (!message || message.target !== "background") {
+          return Promise.resolve(undefined);
+        }
+        const relayed =
+          message.action === "run_ocr"
+            ? {
+                target: "offscreen",
+                action: "offscreen_run_ocr",
+                requestId: message.requestId,
+                dataUrl: message.dataUrl,
+              }
+            : message.action === "cancel_ocr"
+              ? {
+                  target: "offscreen",
+                  action: "offscreen_cancel_ocr",
+                  requestId: message.requestId,
+                }
+              : null;
+        if (!relayed) return Promise.resolve(undefined);
+        return new Promise((resolve) => {
+          let settled = false;
+          let anyAsync = false;
+          const sendResponse = (response) => {
+            if (!settled) {
+              settled = true;
+              resolve(response);
+            }
+          };
+          for (const listener of window.__ocrListeners) {
+            const keepOpen = listener(relayed, {}, sendResponse);
+            if (keepOpen === true) anyAsync = true;
+            if (settled) return;
+          }
+          if (!anyAsync && !settled) {
+            settled = true;
+            resolve(undefined);
+          }
+        });
+      }
     }
   };
   window.Ocr = {
@@ -59,9 +111,14 @@ const MOCKS = `
       maxCropPixels: 4000 * 4000,
       ocrLanguages: ["eng", "deu"],
       langUncertaintyMargin: 5,
-      tesseract: { workerPath: "", corePath: "", langPath: "", workerBlobURL: true }
+      toastErrorMs: 10000,
+      tesseract: { workerPath: "", corePath: "", langPath: "", workerBlobURL: false }
     },
     log(...args) { window.__ocrEvents.push(["log", args.join(" ")]); },
+    formatErrorMessage(err) {
+      if (err && typeof err.message === "string" && err.message.trim()) return err.message;
+      return String(err || "Unknown error");
+    },
     showToast(message) { window.__ocrEvents.push(["toast", String(message)]); },
     showError(context, error) {
       window.__ocrEvents.push(["error", context + ": " + (error && error.message)]);
@@ -89,6 +146,12 @@ const MOCKS = `
       if (window.__ocrMode === "partial-failure" && language === "deu") {
         return Promise.reject(new Error("simulierter Initialisierungsfehler"));
       }
+      if (window.__ocrMode === "late-worker-after-failure") {
+        if (language === "deu") {
+          return Promise.reject(new Error("schneller Fehler"));
+        }
+        return new Promise((resolve) => setTimeout(() => resolve(worker), 60));
+      }
       return Promise.resolve(worker);
     }
   };
@@ -96,7 +159,7 @@ const MOCKS = `
 
 async function startSelection(page, imageUri = TEST_IMAGE, start = { x: 1, y: 1 }, end = { x: 10, y: 10 }) {
   await page.evaluate((imageUri) => {
-    window.__ocrListener({ action: "start_selection", imageUri });
+    window.__dispatchTabMessage({ action: "start_selection", imageUri });
   }, imageUri);
   await page.waitForSelector("#ocr-overlay-canvas", { timeout: 1000 });
   // Das kleine data:-Bild muss erst dekodiert sein, bevor mouseup OCR startet.
@@ -118,6 +181,8 @@ async function startSelection(page, imageUri = TEST_IMAGE, start = { x: 1, y: 1 
     await page.setContent("<!doctype html><html><body></body></html>");
     await page.addStyleTag({ content: CONTENT_CSS });
     await page.addScriptTag({ content: MOCKS });
+    await page.addScriptTag({ content: ENGINE_SCRIPT });
+    await page.addScriptTag({ content: OFFSCREEN_SCRIPT });
     await page.addScriptTag({ content: CONTENT_SCRIPT });
 
     await startSelection(
@@ -147,6 +212,27 @@ async function startSelection(page, imageUri = TEST_IMAGE, start = { x: 1, y: 1 
       "Der Crop wurde nicht anhand der realen Screenshot-Aufloesung skaliert."
     );
 
+    // Spaet aufloesender Worker nach schnellem Teilfehler darf nicht leaken.
+    await page.evaluate(() => {
+      window.__ocrMode = "late-worker-after-failure";
+      window.__ocrWorkers = [];
+      window.__ocrEvents = [];
+    });
+    await startSelection(page);
+    await waitFor(
+      page,
+      () => window.__ocrEvents.some((event) => event[0] === "error"),
+      "Der schnelle Fehler bei late-worker-after-failure wurde nicht gemeldet."
+    );
+    await waitFor(
+      page,
+      () => {
+        const eng = window.__ocrWorkers.find((worker) => worker.language === "eng");
+        return Boolean(eng && eng.terminateCalls === 1);
+      },
+      "Ein spaet aufloesender Worker nach Teilfehler wurde nicht terminiert."
+    );
+
     await page.evaluate(() => {
       window.__ocrMode = "wait-for-cancel";
       window.__ocrWorkers = [];
@@ -160,7 +246,7 @@ async function startSelection(page, imageUri = TEST_IMAGE, start = { x: 1, y: 1 
     );
 
     await page.evaluate((imageUri) => {
-      window.__ocrListener({ action: "start_selection", imageUri });
+      window.__dispatchTabMessage({ action: "start_selection", imageUri });
     }, TEST_IMAGE);
     await page.waitForTimeout(50);
     assert(
@@ -181,11 +267,11 @@ async function startSelection(page, imageUri = TEST_IMAGE, start = { x: 1, y: 1 
     );
 
     await page.evaluate((imageUri) => {
-      window.__ocrListener({ action: "start_selection", imageUri });
+      window.__dispatchTabMessage({ action: "start_selection", imageUri });
     }, TEST_IMAGE);
     await page.waitForSelector("#ocr-overlay-canvas", { timeout: 1000 });
     await page.keyboard.press("Escape");
-    console.log("OK: OCR-Worker-Lebenszyklus ist gegen Teilfehler und Abbruch abgesichert.");
+    console.log("OK: OCR-Worker-Lebenszyklus ist gegen Teilfehler, spaete Worker und Abbruch abgesichert.");
   } finally {
     if (browser) await browser.close();
   }
