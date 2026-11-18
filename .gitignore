@@ -90,3 +90,6 @@ public/store_promo/
 # Generierte/lokale Test-Artefakte (npm run build:autotest) und Debug-Skripte
 tests/deploy-autotest/
 tests/debug*.cjs
+
+# Icon-Quelldatei (nur lokal)
+assets/
