@@ -79,6 +79,15 @@
     return "ocr-" + Date.now() + "-" + Math.random().toString(36).slice(2, 10);
   }
 
+  /** Opens the options page (content scripts cannot call openOptionsPage). */
+  function openLanguageSettings() {
+    Promise.resolve()
+      .then(() =>
+        chrome.runtime.sendMessage({ target: "background", action: "open_options" })
+      )
+      .catch((error) => Ocr.log("Optionsseite konnte nicht geoeffnet werden:", error));
+  }
+
   function cancelActiveOcr() {
     if (!activeOcrRequest) return false;
     Ocr.log("OCR-Abbruch angefordert");
@@ -366,6 +375,7 @@
     ocrInProgress = true;
     Ocr.showToast("Recognizing text (local) …\nPress Esc to cancel");
     Ocr.log("Starte OCR fuer Auswahl", JSON.stringify(rect), "Bild", img.naturalWidth + "x" + img.naturalHeight);
+    let usedLanguages = null;
     try {
       let croppedDataUrl;
       try {
@@ -395,6 +405,10 @@
           throw createOcrAbortError();
         }
         throw new Error("OCR service did not return a response.");
+      }
+
+      if (Array.isArray(response.languages)) {
+        usedLanguages = response.languages;
       }
 
       if (!response.ok) {
@@ -432,6 +446,7 @@
             return copied;
           },
           onReselect: () => initSelection(imageUri),
+          onOpenSettings: openLanguageSettings,
         });
         Ocr.log("OCR fertig, Ergebnis angezeigt:", details);
       } else {
@@ -443,9 +458,11 @@
         Ocr.showToast("Text recognition cancelled.");
         Ocr.log("OCR abgebrochen");
       } else {
-        Ocr.showError("Text recognition", err, {
-          Languages: CONFIG.ocrLanguages.join("+"),
-        });
+        Ocr.showError(
+          "Text recognition",
+          err,
+          usedLanguages ? { Languages: usedLanguages.join("+") } : undefined
+        );
       }
     } finally {
       // Der Status wird erst nach Abschluss der Offscreen-Antwort freigegeben;

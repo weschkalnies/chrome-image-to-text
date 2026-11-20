@@ -8,11 +8,14 @@ and OCR results never leave your device.
 
 ## Features
 
-- 100% local OCR with Tesseract.js and German/English language models
+- 100% local OCR with Tesseract.js and 14 bundled language models
+- Choose one or two OCR languages in the options; default is your browser
+  language plus English
 - Mouse-based selection, cancellable with `Esc`
 - Editable result dialog with confidence, language and explicit copy action
 - High-DPI and screenshot scaling based on the actual image dimensions
-- No persistent host permissions: only `activeTab`, `scripting`, and `offscreen`
+- No persistent host permissions: only `activeTab`, `scripting`, `offscreen`,
+  and `storage` (language setting only)
 - Robust worker, offscreen OCR, and injection management for Manifest V3
 
 ## Quick start
@@ -38,6 +41,23 @@ Then in Chrome:
 4. Select **Copy** to write it to the clipboard.
 
 `Esc` cancels an active selection or OCR operation, or closes the result dialog.
+
+### OCR languages
+
+Right-click the extension icon and choose **Options** (or select **Change
+languages** in the result dialog) to pick one or two languages. With one
+language OCR is fastest; with two, both are recognized in parallel and the
+result with the higher confidence wins.
+
+Without a saved choice the extension uses the browser language plus English
+(English only if the browser language is English or not supported).
+
+Supported: English, German, French, Spanish, Italian, Portuguese, Dutch,
+Polish, Czech, Swedish, Danish, Turkish, Russian, Ukrainian.
+
+To add a language, place `<code>.traineddata.gz` from
+[`@tesseract.js-data/<code>/4.0.0_best_int`](https://www.jsdelivr.com/package/npm/@tesseract.js-data/eng)
+in `src/lib/` and add an entry to `src/lib/ocr/languages.js`.
 
 ## Development
 
@@ -72,6 +92,7 @@ chrome-image-to-text/
 │   ├── content.css          # selection overlay styles
 │   ├── offscreen.html       # isolated MV3 offscreen document for local OCR
 │   ├── offscreen.js         # offscreen OCR controller
+│   ├── options.html/.js/.css # language settings page
 │   ├── icons/               # icon family
 │   └── lib/                 # OCR, UI and local Tesseract resources
 ├── deploy/                  # generated extension loaded in Chrome

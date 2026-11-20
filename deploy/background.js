@@ -8,14 +8,18 @@
  *  - Content-Skript race-sicher pro Tab injizieren
  *  - Bilddaten an das Content-Skript senden
  *  - OCR-Anfragen sicher an das isolierte MV3 Offscreen Document routen
+ *  - Gewählte OCR-Sprachen (chrome.storage.local) an die OCR weitergeben
  *
  * Sicherheitshinweis:
- *  - Wir verwenden ausschließlich `activeTab`, `scripting` und `offscreen`.
+ *  - Wir verwenden ausschließlich `activeTab`, `scripting`, `offscreen` und
+ *    `storage` (nur für die Spracheinstellung).
  *    Es gibt KEINE dauerhaften Host-Permissions. Zugriff auf den Tab erfolgt
  *    nur nach explizitem Nutzer-Klick (transient activation).
  *  - `tab.url` ist nur dank `activeTab` verfügbar; wir prüfen daher
  *    defensiv auf undefined.
  */
+
+importScripts("lib/ocr/languages.js");
 
 // MV3-Service-Worker können jederzeit beendet werden. Ein Set mit zuvor
 // injizierten Tabs wäre deshalb nach einem Neustart falsch. Diese Map lebt
@@ -352,6 +356,28 @@ function createCancelledResponse() {
   };
 }
 
+/**
+ * Liefert die vom Nutzer gewählten OCR-Sprachen (1-2 Tesseract-Codes).
+ * Ohne gespeicherte (oder mit ungültiger) Auswahl: Browsersprache + Englisch.
+ */
+async function getSelectedOcrLanguages() {
+  const Languages = self.Ocr.Languages;
+  try {
+    if (chrome.storage && chrome.storage.local) {
+      const stored = await chrome.storage.local.get(Languages.STORAGE_KEY);
+      const selection = Languages.normalize(stored && stored[Languages.STORAGE_KEY]);
+      if (selection) return selection;
+    }
+  } catch (error) {
+    console.error("[OCR] Spracheinstellung konnte nicht gelesen werden:", error);
+  }
+  const uiLanguage =
+    (chrome.i18n && typeof chrome.i18n.getUILanguage === "function"
+      ? chrome.i18n.getUILanguage()
+      : null) || (self.navigator && self.navigator.language);
+  return Languages.defaults(uiLanguage);
+}
+
 async function handleRunOcrRequest(message, sender) {
   if (!sender || !sender.tab || typeof sender.tab.id !== "number") {
     return {
@@ -387,7 +413,10 @@ async function handleRunOcrRequest(message, sender) {
   clearOffscreenIdleTimer();
 
   try {
-    await ensureOffscreenDocument();
+    const [languages] = await Promise.all([
+      getSelectedOcrLanguages(),
+      ensureOffscreenDocument(),
+    ]);
     if (entry.cancelled) {
       return createCancelledResponse();
     }
@@ -396,6 +425,7 @@ async function handleRunOcrRequest(message, sender) {
       action: "offscreen_run_ocr",
       requestId,
       dataUrl: message.dataUrl,
+      languages,
     });
     if (!response || typeof response !== "object") {
       if (entry.cancelled) {
@@ -406,7 +436,7 @@ async function handleRunOcrRequest(message, sender) {
         error: { name: "Error", message: "Offscreen OCR document did not respond." },
       };
     }
-    return response;
+    return { ...response, languages };
   } catch (error) {
     if (entry.cancelled) {
       return createCancelledResponse();
@@ -501,6 +531,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
       }
     );
+    return true;
+  }
+
+  if (message.action === "open_options") {
+    void Promise.resolve()
+      .then(() => chrome.runtime.openOptionsPage())
+      .then(
+        () => sendResponse({ ok: true }),
+        (error) => sendResponse({ ok: false, error: serializeOcrError(error) })
+      );
     return true;
   }
 

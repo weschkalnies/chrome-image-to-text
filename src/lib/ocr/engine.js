@@ -9,11 +9,6 @@
 (function (Ocr) {
   "use strict";
 
-  const LANGUAGE_LABELS = {
-    eng: "English",
-    deu: "German",
-  };
-
   /** Creates a typed abort error for cancelled OCR runs. */
   function createOcrAbortError() {
     const error = new Error("Text recognition was cancelled.");
@@ -90,7 +85,7 @@
 
   /** Returns the human-readable language label for a Tesseract code. */
   function languageLabel(lang) {
-    return LANGUAGE_LABELS[lang] || lang;
+    return Ocr.Languages ? Ocr.Languages.label(lang) : lang;
   }
 
   /** Runs a single worker recognition and extracts text + confidence. */
@@ -126,10 +121,16 @@
   }
 
   /**
-   * Executes offline multi-language OCR on a cropped PNG data URL while
-   * ensuring every spawned worker is terminated on completion, error, or abort.
+   * Executes offline OCR on a cropped PNG data URL with one worker per
+   * selected language (1-2) while ensuring every spawned worker is terminated
+   * on completion, error, or abort. With two languages the result with the
+   * higher confidence wins.
+   *
+   * @param {string} dataUrl
+   * @param {object} [operation]
+   * @param {string[]} languages Tesseract codes, already validated
    */
-  async function recognizeText(dataUrl, operation) {
+  async function recognizeText(dataUrl, operation, languages) {
     if (!Ocr.checkTesseractLoaded()) {
       throw new Error(
         "Tesseract.js is not available (global 'Tesseract' missing)."
@@ -138,7 +139,10 @@
 
     const op = operation || createOcrOperation();
     const config = Ocr.Config;
-    const langs = config.ocrLanguages;
+    const langs = languages;
+    if (!Array.isArray(langs) || langs.length === 0) {
+      throw new Error("No OCR language selected.");
+    }
     Ocr.log("Erstelle", langs.length, "Tesseract-Worker parallel:", langs.join(", "));
 
     const t0 = Date.now();

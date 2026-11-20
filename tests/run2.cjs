@@ -324,6 +324,12 @@ const log = (message) => {
     // Zwischenablage explizit leeren, um frische OCR-Erkennung unter strikter CSP nachzuweisen.
     await page.evaluate(() => navigator.clipboard.writeText(""));
     await runOcrFlowOnPage(context, page, serviceWorker, testOrigin + "/strict-csp", "strict-csp", logs);
+
+    // Zwei gespeicherte Sprachen (Optionsseite) -> zwei echte Tesseract-Worker,
+    // das bessere Ergebnis gewinnt.
+    await serviceWorker.evaluate(() => chrome.storage.local.set({ ocrLanguages: ["deu", "eng"] }));
+    await page.evaluate(() => navigator.clipboard.writeText(""));
+    await runOcrFlowOnPage(context, page, serviceWorker, testOrigin + "/", "deu+eng", logs);
   } catch (error) {
     console.error("E2E FEHLER:", error && error.stack ? error.stack : error);
     console.error("===== Relevante OCR-Logs =====");

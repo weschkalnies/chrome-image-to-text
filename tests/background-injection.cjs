@@ -10,7 +10,9 @@
  * - parallele run_ocr-Anfragen teilen genau ein offscreen.createDocument();
  * - vorhandenes Offscreen-Dokument nach Worker-Neustart wird wiederverwendet;
  * - Tab-Pruefung, In-Flight-Abbruch und Tab-Cleanup (onRemoved / onUpdated);
- * - Idle-Timeout schliesst das Offscreen-Dokument erst, wenn keine OCR mehr laeuft.
+ * - Idle-Timeout schliesst das Offscreen-Dokument erst, wenn keine OCR mehr laeuft;
+ * - OCR-Sprachen: Default (Browsersprache + Englisch), gespeicherte Auswahl,
+ *   ungueltige Auswahl und open_options.
  */
 "use strict";
 
@@ -19,7 +21,8 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 
-const SOURCE = fs.readFileSync(path.join(__dirname, "..", "src", "background.js"), "utf8");
+const SRC_DIR = path.join(__dirname, "..", "src");
+const SOURCE = fs.readFileSync(path.join(SRC_DIR, "background.js"), "utf8");
 const TAB = { id: 17, windowId: 4, url: "https://example.test/" };
 
 function createDeferred() {
@@ -38,6 +41,8 @@ function createHarness({
   offscreenOpen = false,
   holdOffscreenCreate = false,
   holdOffscreenRun = false,
+  uiLanguage = "en-US",
+  storedLanguages,
 } = {}) {
   const listeners = {};
   const metrics = {
@@ -54,6 +59,8 @@ function createHarness({
     offscreenPings: 0,
     offscreenRuns: [],
     offscreenCancels: [],
+    offscreenLanguages: [],
+    optionsOpened: 0,
   };
 
   let releaseInjection;
@@ -121,7 +128,22 @@ function createHarness({
         offscreenOpen = false;
       },
     },
+    storage: {
+      local: {
+        async get(key) {
+          return storedLanguages === undefined ? {} : { [key]: storedLanguages };
+        },
+      },
+    },
+    i18n: {
+      getUILanguage() {
+        return uiLanguage;
+      },
+    },
     runtime: {
+      async openOptionsPage() {
+        metrics.optionsOpened += 1;
+      },
       getURL(rel) {
         return "chrome-extension://test-id/" + rel;
       },
@@ -150,6 +172,7 @@ function createHarness({
         }
         if (message.action === "offscreen_run_ocr") {
           metrics.offscreenRuns.push(message.requestId);
+          metrics.offscreenLanguages.push(message.languages);
           if (holdOffscreenRun) {
             const gate = createDeferred();
             offscreenRunGates.set(message.requestId, gate);
@@ -218,13 +241,20 @@ function createHarness({
     },
   };
 
-  vm.runInNewContext(SOURCE, {
+  const context = vm.createContext({
     chrome,
     console,
     URL,
     setTimeout: fakeSetTimeout,
     clearTimeout: fakeClearTimeout,
   });
+  context.self = context;
+  context.importScripts = (...files) => {
+    for (const file of files) {
+      vm.runInContext(fs.readFileSync(path.join(SRC_DIR, file), "utf8"), context);
+    }
+  };
+  vm.runInContext(SOURCE, context);
 
   function sendRuntimeMessage(message, sender = { tab: { id: TAB.id } }) {
     return new Promise((resolve) => {
@@ -426,6 +456,44 @@ function createHarness({
   assert.strictEqual(tab18Resp.aborted, true, "Tab-Close muss laufende OCR des Tabs abbrechen.");
   await tabLifecycle.runIdleTimers();
   assert.strictEqual(tabLifecycle.metrics.offscreenCloses, 1, "Nach Abbruch des letzten aktiven Requests muss Idle-Close greifen.");
+
+  // 11. OCR-Sprachen werden aus storage/Browsersprache an das Offscreen-Dokument gereicht.
+  async function runOcrLanguages(options) {
+    const harness = createHarness(options);
+    const response = await harness.sendRuntimeMessage(
+      { target: "background", action: "run_ocr", requestId: "req-lang", dataUrl: "data:image/png;base64,AA==" },
+      { tab: { id: 17 } }
+    );
+    assert.strictEqual(response.ok, true);
+    assert.deepStrictEqual(
+      Array.from(response.languages),
+      Array.from(harness.metrics.offscreenLanguages[0]),
+      "Antwort muss die verwendeten Sprachen enthalten."
+    );
+    // Array stammt aus dem VM-Kontext -> in ein Array dieses Realms umwandeln.
+    return Array.from(harness.metrics.offscreenLanguages[0]);
+  }
+  assert.deepStrictEqual(await runOcrLanguages({ uiLanguage: "de-DE" }), ["deu", "eng"], "Default: Browsersprache + Englisch.");
+  assert.deepStrictEqual(await runOcrLanguages({ uiLanguage: "en-GB" }), ["eng"], "Englischer Browser: nur Englisch.");
+  assert.deepStrictEqual(await runOcrLanguages({ uiLanguage: "ja" }), ["eng"], "Nicht unterstuetzte Browsersprache: nur Englisch.");
+  assert.deepStrictEqual(await runOcrLanguages({ uiLanguage: "pt-BR" }), ["por", "eng"], "Regionalvariante muss auf die Sprache abgebildet werden.");
+  assert.deepStrictEqual(await runOcrLanguages({ uiLanguage: "de-DE", storedLanguages: ["fra"] }), ["fra"], "Gespeicherte Auswahl hat Vorrang.");
+  assert.deepStrictEqual(
+    await runOcrLanguages({ uiLanguage: "de-DE", storedLanguages: ["fra", "spa", "ita"] }),
+    ["deu", "eng"],
+    "Mehr als 2 Sprachen sind ungueltig -> Default."
+  );
+  assert.deepStrictEqual(
+    await runOcrLanguages({ uiLanguage: "de-DE", storedLanguages: ["xxx", "fra", "fra"] }),
+    ["fra"],
+    "Unbekannte Codes und Duplikate werden verworfen."
+  );
+
+  // 12. open_options oeffnet die Optionsseite.
+  const optionsHarness = createHarness();
+  const optionsResp = await optionsHarness.sendRuntimeMessage({ target: "background", action: "open_options" });
+  assert.strictEqual(optionsResp.ok, true);
+  assert.strictEqual(optionsHarness.metrics.optionsOpened, 1);
 
   console.log("OK: Content-Script-Injektion und Offscreen-Routing sind race-sicher abgesichert.");
 })().catch((error) => {

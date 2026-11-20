@@ -15,8 +15,6 @@
     // Maximum crop pixels (w * h). Prevents a deliberately huge screenshot
     // from locking up the browser / UI thread (DoS protection).
     maxCropPixels: 4000 * 4000,
-    // OCR languages – Tesseract traineddata files must exist locally in lib/
-    ocrLanguages: ["eng", "deu"],
     // Mindest-Vorsprung der Best-Konfidenz gegenueber der zweitbesten Sprache
     // (in Prozentpunkten), damit die Sprache als eindeutig gilt und angezeigt wird.
     langUncertaintyMargin: 5,

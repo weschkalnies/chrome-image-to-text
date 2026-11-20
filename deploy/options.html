@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LocalOCR Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <main>
+    <h1>OCR languages</h1>
+    <p class="hint">
+      Choose one or two languages for text recognition. With two languages,
+      both are tried and the better result wins. One language is faster.
+      To switch languages, uncheck one first. Changes are saved automatically.
+    </p>
+    <fieldset id="languages">
+      <legend class="visually-hidden">OCR languages</legend>
+    </fieldset>
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+  </main>
+  <script src="lib/ocr/languages.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

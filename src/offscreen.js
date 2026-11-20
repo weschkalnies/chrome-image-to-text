@@ -67,6 +67,15 @@
         });
         return false;
       }
+      const languages =
+        Ocr.Languages && Ocr.Languages.normalize(message.languages);
+      if (!languages) {
+        sendResponse({
+          ok: false,
+          error: { name: "Error", message: "Invalid OCR language selection." },
+        });
+        return false;
+      }
       if (ACTIVE_OPERATIONS.has(message.requestId)) {
         sendResponse({
           ok: false,
@@ -80,7 +89,11 @@
 
       (async () => {
         try {
-          const result = await Ocr.Engine.recognizeText(message.dataUrl, operation);
+          const result = await Ocr.Engine.recognizeText(
+            message.dataUrl,
+            operation,
+            languages
+          );
           sendResponse({ ok: true, result });
         } catch (err) {
           sendResponse({

@@ -25,6 +25,10 @@
     }
     h2 { margin: 0; font-size: 20px; line-height: 1.25; }
     .meta { color: #526574; font-size: 13px; line-height: 1.4; }
+    button.link {
+      min-height: 0; margin-left: 6px; padding: 0; border: 0; background: none;
+      color: #12314d; font: inherit; text-decoration: underline; cursor: pointer;
+    }
     textarea {
       width: 100%; min-height: 180px; resize: vertical; padding: 12px;
       border: 1px solid #a8b9c6; border-radius: 8px; color: #102b43;
@@ -59,7 +63,7 @@
 
   /**
    * Shows recognized text before it is copied.
-   * @param {{text: string, confidence: number, language: string|null, onCopy: (text: string) => Promise<boolean>, onReselect: () => void}} options
+   * @param {{text: string, confidence: number, language: string|null, onCopy: (text: string) => Promise<boolean>, onReselect: () => void, onOpenSettings?: () => void}} options
    */
   function show(options) {
     if (!document.body || !options || typeof options.text !== "string") return false;
@@ -86,6 +90,14 @@
     if (options.language) metaParts.push("Language " + options.language);
     const meta = element("div", metaParts.join(" · "));
     meta.className = "meta";
+    let settingsButton = null;
+    if (typeof options.onOpenSettings === "function") {
+      settingsButton = element("button", "Change languages");
+      settingsButton.className = "link";
+      settingsButton.type = "button";
+      settingsButton.addEventListener("click", () => options.onOpenSettings());
+      meta.append(" · ", settingsButton);
+    }
 
     const textarea = element("textarea");
     textarea.value = options.text;
@@ -138,7 +150,7 @@
     dialog.append(title, meta, textarea, status, actions);
     dialog.addEventListener("keydown", (event) => {
       if (event.key !== "Tab") return;
-      const focusables = [textarea, closeButton, reselectButton, copyButton].filter((el) => !el.disabled);
+      const focusables = [settingsButton, textarea, closeButton, reselectButton, copyButton].filter((el) => el && !el.disabled);
       if (focusables.length === 0) return;
       const first = focusables[0];
       const last = focusables[focusables.length - 1];
