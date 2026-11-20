@@ -83,11 +83,12 @@
   }
 
   /** Shows the editable result dialog with an explicit copy action. */
-  function showResultDialog(text, confidence, languageName, imageUri) {
+  function showResultDialog(text, confidence, languageName, imageUri, showReviewPrompt) {
     Ocr.Result.show({
       text,
       confidence,
       language: languageName,
+      showReviewPrompt: Boolean(showReviewPrompt),
       onCopy: async (editedText) => {
         const copied = await Ocr.copyToClipboard(editedText);
         Ocr.showToast(
@@ -99,7 +100,27 @@
       },
       onReselect: () => initSelection(imageUri),
       onOpenSettings: openLanguageSettings,
+      onOpenReview: openReviewPage,
+      onDismissReview: dismissReviewPrompt,
     });
+  }
+
+  /** Opens the Chrome Web Store review page via the background worker. */
+  function openReviewPage() {
+    Promise.resolve()
+      .then(() =>
+        chrome.runtime.sendMessage({ target: "background", action: "open_review" })
+      )
+      .catch((error) => Ocr.log("Bewertungsseite konnte nicht geoeffnet werden:", error));
+  }
+
+  /** Permanently dismisses the subtle review prompt via the background worker. */
+  function dismissReviewPrompt() {
+    Promise.resolve()
+      .then(() =>
+        chrome.runtime.sendMessage({ target: "background", action: "dismiss_review" })
+      )
+      .catch((error) => Ocr.log("Review-Hinweis konnte nicht ausgeblendet werden:", error));
   }
 
   /** Opens the options page (content scripts cannot call openOptionsPage). */
@@ -470,7 +491,13 @@
           }
         }
 
-        showResultDialog(trimmed, result.confidence, languageName, imageUri);
+        showResultDialog(
+          trimmed,
+          result.confidence,
+          languageName,
+          imageUri,
+          Boolean(response.showReviewPrompt)
+        );
         if (response.autoCopy) {
           Ocr.showToast(Ocr.t("resultAutoCopyFailed"), "error");
         }

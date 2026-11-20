@@ -95,6 +95,15 @@
   "resultAutoCopyFailed": {
     "message": "Automatic copy failed. Please use Copy."
   },
+  "reviewPromptText": {
+    "message": "Enjoying LocalOCR? A quick review on the Chrome Web Store helps a lot."
+  },
+  "reviewPromptRate": {
+    "message": "Rate extension"
+  },
+  "reviewPromptDismiss": {
+    "message": "Don't show again"
+  },
   "optionsTitle": {
     "message": "LocalOCR Settings"
   },

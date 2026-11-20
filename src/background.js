@@ -396,6 +396,64 @@ async function readSettings() {
 // Serialisiert Verlaufs-Schreibzugriffe, damit parallele OCR-Läufe sich
 // nicht gegenseitig Einträge überschreiben.
 let HISTORY_WRITE_CHAIN = Promise.resolve();
+let REVIEW_WRITE_CHAIN = Promise.resolve();
+
+/**
+ * Zählt eine erfolgreiche OCR-Erkennung (mit erkanntem Text) und gibt true
+ * zurück, sobald der Schwellenwert für den dezenten Bewertungs-Hinweis
+ * erreicht ist und der Hinweis noch nicht ausgeblendet wurde.
+ */
+function recordSuccessfulOcrUsage() {
+  const { Settings } = self.Ocr;
+  const KEYS = Settings.KEYS;
+  if (
+    !chrome.storage ||
+    !chrome.storage.local ||
+    typeof chrome.storage.local.get !== "function" ||
+    typeof chrome.storage.local.set !== "function"
+  ) {
+    return Promise.resolve(false);
+  }
+  const operation = REVIEW_WRITE_CHAIN.then(async () => {
+    const data =
+      (await chrome.storage.local.get([KEYS.usageCount, KEYS.reviewDismissed])) || {};
+    if (data[KEYS.reviewDismissed] === true) {
+      return false;
+    }
+    const prev =
+      Number.isInteger(data[KEYS.usageCount]) && data[KEYS.usageCount] >= 0
+        ? data[KEYS.usageCount]
+        : 0;
+    const next = prev + 1;
+    await chrome.storage.local.set({ [KEYS.usageCount]: next });
+    return next >= Settings.REVIEW.threshold;
+  }).catch((error) => {
+    console.error("[OCR] Nutzungszähler konnte nicht gespeichert werden:", error);
+    return false;
+  });
+  REVIEW_WRITE_CHAIN = operation.then(() => undefined);
+  return operation;
+}
+
+/** Blendet den Bewertungs-Hinweis dauerhaft aus. */
+function dismissReviewPrompt() {
+  const { Settings } = self.Ocr;
+  const KEYS = Settings.KEYS;
+  if (
+    !chrome.storage ||
+    !chrome.storage.local ||
+    typeof chrome.storage.local.set !== "function"
+  ) {
+    return Promise.resolve();
+  }
+  const operation = REVIEW_WRITE_CHAIN.then(async () => {
+    await chrome.storage.local.set({ [KEYS.reviewDismissed]: true });
+  }).catch((error) => {
+    console.error("[OCR] Review-Status konnte nicht gespeichert werden:", error);
+  });
+  REVIEW_WRITE_CHAIN = operation.then(() => undefined);
+  return operation;
+}
 
 /** Hängt ein Ergebnis vorne an den Sitzungsverlauf an (max. HISTORY_MAX). */
 function addHistoryEntry(result) {
@@ -484,10 +542,17 @@ async function handleRunOcrRequest(message, sender) {
         error: { name: "Error", message: "Offscreen OCR document did not respond." },
       };
     }
-    if (response.ok && settings.historyEnabled) {
+    const hasText = Boolean(
+      response.ok &&
+      response.result &&
+      typeof response.result.text === "string" &&
+      response.result.text.trim()
+    );
+    if (hasText && settings.historyEnabled) {
       await addHistoryEntry(response.result);
     }
-    return { ...response, languages, autoCopy: settings.autoCopy };
+    const showReviewPrompt = hasText ? await recordSuccessfulOcrUsage() : false;
+    return { ...response, languages, autoCopy: settings.autoCopy, showReviewPrompt };
   } catch (error) {
     if (entry.cancelled) {
       return createCancelledResponse();
@@ -592,6 +657,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         () => sendResponse({ ok: true }),
         (error) => sendResponse({ ok: false, error: serializeOcrError(error) })
       );
+    return true;
+  }
+
+  if (message.action === "open_review") {
+    void Promise.resolve()
+      .then(async () => {
+        await dismissReviewPrompt();
+        await chrome.tabs.create({ url: self.Ocr.Settings.REVIEW.url });
+      })
+      .then(
+        () => sendResponse({ ok: true }),
+        (error) => sendResponse({ ok: false, error: serializeOcrError(error) })
+      );
+    return true;
+  }
+
+  if (message.action === "dismiss_review") {
+    void dismissReviewPrompt().then(
+      () => sendResponse({ ok: true }),
+      (error) => sendResponse({ ok: false, error: serializeOcrError(error) })
+    );
     return true;
   }
 

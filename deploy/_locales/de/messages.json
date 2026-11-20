@@ -95,6 +95,15 @@
   "resultAutoCopyFailed": {
     "message": "Automatisches Kopieren fehlgeschlagen. Bitte „Kopieren“ verwenden."
   },
+  "reviewPromptText": {
+    "message": "Gefällt dir LocalOCR? Eine kurze Bewertung im Chrome Web Store hilft sehr."
+  },
+  "reviewPromptRate": {
+    "message": "Bewerten"
+  },
+  "reviewPromptDismiss": {
+    "message": "Nicht mehr zeigen"
+  },
   "optionsTitle": {
     "message": "LocalOCR-Einstellungen"
   },

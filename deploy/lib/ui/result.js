@@ -41,6 +41,20 @@
     button.secondary { background: #fff; color: #12314d; }
     button:disabled { cursor: wait; opacity: .7; }
     .status { min-height: 18px; color: #526574; font-size: 13px; }
+    .review-banner {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+      gap: 10px; padding: 10px 12px; border: 1px solid #d6e0e8; border-radius: 8px;
+      background: #f4f7fa; color: #12314d; font-size: 13px; line-height: 1.4;
+    }
+    .review-banner p { margin: 0; flex: 1 1 220px; }
+    .review-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    .review-actions button.review-rate {
+      min-height: 30px; padding: 5px 10px; font-size: 13px;
+    }
+    .review-actions button.review-dismiss {
+      min-height: 0; padding: 4px 2px; border: 0; background: none;
+      color: #526574; font: 400 12px/1.2 inherit; text-decoration: underline; cursor: pointer;
+    }
     @media (max-width: 420px) { .dialog { padding: 18px; } textarea { min-height: 140px; } .actions button { flex: 1; } }
   `;
 
@@ -149,11 +163,53 @@
       }
     });
 
+    let reviewBanner = null;
+    let reviewRateButton = null;
+    let reviewDismissButton = null;
+    if (options.showReviewPrompt === true) {
+      reviewBanner = element("div");
+      reviewBanner.className = "review-banner";
+      const reviewText = element("p", t("reviewPromptText"));
+      const reviewActions = element("div");
+      reviewActions.className = "review-actions";
+
+      reviewRateButton = element("button", t("reviewPromptRate"));
+      reviewRateButton.className = "secondary review-rate";
+      reviewRateButton.type = "button";
+      reviewRateButton.addEventListener("click", () => {
+        reviewBanner.remove();
+        if (typeof options.onOpenReview === "function") options.onOpenReview();
+      });
+
+      reviewDismissButton = element("button", t("reviewPromptDismiss"));
+      reviewDismissButton.className = "review-dismiss";
+      reviewDismissButton.type = "button";
+      reviewDismissButton.addEventListener("click", () => {
+        reviewBanner.remove();
+        if (typeof options.onDismissReview === "function") options.onDismissReview();
+      });
+
+      reviewActions.append(reviewRateButton, reviewDismissButton);
+      reviewBanner.append(reviewText, reviewActions);
+    }
+
     actions.append(closeButton, reselectButton, copyButton);
-    dialog.append(title, meta, textarea, status, actions);
+    if (reviewBanner) {
+      dialog.append(title, meta, textarea, status, actions, reviewBanner);
+    } else {
+      dialog.append(title, meta, textarea, status, actions);
+    }
     dialog.addEventListener("keydown", (event) => {
       if (event.key !== "Tab") return;
-      const focusables = [settingsButton, textarea, closeButton, reselectButton, copyButton].filter((el) => el && !el.disabled);
+      const focusables = [
+        settingsButton,
+        textarea,
+        closeButton,
+        reselectButton,
+        copyButton,
+        reviewRateButton,
+        reviewDismissButton,
+      ].filter((el) => el && el.isConnected && !el.disabled);
       if (focusables.length === 0) return;
       const first = focusables[0];
       const last = focusables[focusables.length - 1];

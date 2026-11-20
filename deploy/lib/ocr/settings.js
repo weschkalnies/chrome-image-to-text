@@ -15,10 +15,16 @@
       languages: "ocrLanguages",
       autoCopy: "autoCopy",
       historyEnabled: "historyEnabled",
+      usageCount: "ocrUsageCount",
+      reviewDismissed: "reviewPromptDismissed",
     }),
     DEFAULTS: Object.freeze({
       autoCopy: false,
       historyEnabled: false,
+    }),
+    REVIEW: Object.freeze({
+      threshold: 5,
+      url: "https://chromewebstore.google.com/detail/localocr-screen-to-text/lklkhielihignkcmfjahobjffganiihl/reviews",
     }),
     HISTORY_KEY: "ocrHistory",
     HISTORY_MAX: 10,

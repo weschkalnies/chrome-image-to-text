@@ -63,7 +63,10 @@ function createHarness({
     offscreenCancels: [],
     offscreenLanguages: [],
     optionsOpened: 0,
+    createdTabs: [],
   };
+  const localStore = { ...storedSettings };
+  if (storedLanguages !== undefined) localStore.ocrLanguages = storedLanguages;
 
   let releaseInjection;
   let signalInjectionStarted;
@@ -133,13 +136,14 @@ function createHarness({
     storage: {
       local: {
         async get(keys) {
-          const store = { ...storedSettings };
-          if (storedLanguages !== undefined) store.ocrLanguages = storedLanguages;
           const out = {};
           for (const key of [].concat(keys)) {
-            if (key in store) out[key] = store[key];
+            if (key in localStore) out[key] = localStore[key];
           }
           return out;
+        },
+        async set(items) {
+          Object.assign(localStore, JSON.parse(JSON.stringify(items)));
         },
       },
       session: {
@@ -235,6 +239,10 @@ function createHarness({
         metrics.captures += 1;
         return "data:image/png;base64,AA==";
       },
+      async create(details) {
+        metrics.createdTabs.push({ ...details });
+        return { id: 999, ...details };
+      },
       async sendMessage(_tabId, message) {
         if (message.action === "ocr_ping") {
           metrics.pings += 1;
@@ -296,6 +304,7 @@ function createHarness({
 
   return {
     metrics,
+    localStore,
     sessionStore,
     pendingTimers,
     click: (tab = TAB) => listeners.click(tab),
@@ -540,6 +549,45 @@ function createHarness({
   const optionsResp = await optionsHarness.sendRuntimeMessage({ target: "background", action: "open_options" });
   assert.strictEqual(optionsResp.ok, true);
   assert.strictEqual(optionsHarness.metrics.optionsOpened, 1);
+
+  // 14. Review-Hinweis erscheint nach 5 erfolgreichen OCR-Laeufen und laesst sich dauerhaft ausblenden/oeffnen.
+  const reviewHarness = createHarness({ offscreenOpen: true });
+  for (let i = 1; i <= 4; i += 1) {
+    const resp = await reviewHarness.sendRuntimeMessage(
+      { target: "background", action: "run_ocr", requestId: "req-rev-" + i, dataUrl: "data:image/png;base64,AA==" },
+      { tab: { id: 17 } }
+    );
+    assert.strictEqual(resp.ok, true);
+    assert.strictEqual(resp.showReviewPrompt, false, `Vor dem 5. Lauf (${i}) darf kein Review-Hinweis erscheinen.`);
+  }
+  assert.strictEqual(reviewHarness.localStore.ocrUsageCount, 4);
+
+  const fifthResp = await reviewHarness.sendRuntimeMessage(
+    { target: "background", action: "run_ocr", requestId: "req-rev-5", dataUrl: "data:image/png;base64,AA==" },
+    { tab: { id: 17 } }
+  );
+  assert.strictEqual(fifthResp.showReviewPrompt, true, "Ab dem 5. erfolgreichen Lauf muss der Review-Hinweis erscheinen.");
+  assert.strictEqual(reviewHarness.localStore.ocrUsageCount, 5);
+
+  const dismissResp = await reviewHarness.sendRuntimeMessage({ target: "background", action: "dismiss_review" });
+  assert.strictEqual(dismissResp.ok, true);
+  assert.strictEqual(reviewHarness.localStore.reviewPromptDismissed, true);
+
+  const afterDismissResp = await reviewHarness.sendRuntimeMessage(
+    { target: "background", action: "run_ocr", requestId: "req-rev-6", dataUrl: "data:image/png;base64,AA==" },
+    { tab: { id: 17 } }
+  );
+  assert.strictEqual(afterDismissResp.showReviewPrompt, false, "Nach dismiss_review darf der Hinweis nicht mehr erscheinen.");
+
+  const openReviewHarness = createHarness();
+  const openReviewResp = await openReviewHarness.sendRuntimeMessage({ target: "background", action: "open_review" });
+  assert.strictEqual(openReviewResp.ok, true);
+  assert.strictEqual(openReviewHarness.localStore.reviewPromptDismissed, true);
+  assert.strictEqual(openReviewHarness.metrics.createdTabs.length, 1);
+  assert.strictEqual(
+    openReviewHarness.metrics.createdTabs[0].url,
+    "https://chromewebstore.google.com/detail/localocr-screen-to-text/lklkhielihignkcmfjahobjffganiihl/reviews"
+  );
 
   console.log("OK: Content-Script-Injektion und Offscreen-Routing sind race-sicher abgesichert.");
 })().catch((error) => {
