@@ -8,9 +8,11 @@
     "build:autotest": "node tools/build.js --autotest",
     "check": "node tools/build.js --check",
     "pack": "npm run build && cd deploy && rm -f ../localocr-screen-to-text.zip && zip -r ../localocr-screen-to-text.zip . -x '*.md'",
+    "release": "node tools/release.js",
     "publish:cws": "node tools/publish-cws.js",
     "test:background-injection": "node tests/background-injection.cjs",
     "test:publish-cws": "node tests/publish-cws.cjs",
+    "test:release": "node tests/release.cjs",
     "test:worker-lifecycle": "node tests/content-worker-lifecycle.cjs",
     "test:e2e": "npm run build:autotest && node tests/run2.cjs tests/deploy-autotest"
   }

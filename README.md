@@ -138,18 +138,25 @@ chrome-image-to-text/
   months of policy-compliant account history. The full source code is open in
   this repository for inspection or local building (`npm run build`).
 
-## Release checklist
+## Release
 
-Before a release:
+One command builds, tests, packages, commits, tags and uploads to the Chrome
+Web Store:
 
 ```bash
-npm run build
-npm run check
-npm run test:e2e
+npm run release -- patch        # or minor / major / 1.4.0
+git push --follow-tags          # triggers the GitHub release for the tag
 ```
 
-The project can then be tested as an unpacked extension from `deploy/` or
-packaged for the relevant distribution channel.
+Options: `--draft` (upload only, submit later in the dashboard), `--staged`
+(publish manually after approval), `--no-upload`, `--skip-e2e`, `--dry-run`.
+An explicit version equal to the current manifest version releases it as is,
+as long as no tag exists for it yet.
+
+Store credentials are read from `.env.cws` (`CWS_PUBLISHER_ID`,
+`CWS_EXTENSION_ID`, `CWS_SERVICE_ACCOUNT_KEY_FILE`). The store description,
+screenshots and permission justifications cannot be set via the API; update
+them in the developer dashboard when they change.
 
 ## Support
 
