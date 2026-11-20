@@ -10,9 +10,11 @@
  *
  * Querschnittsfunktionen liegen als Helper-Module unter lib/ocr/ und lib/ui/
  * und werden ueber den gemeinsamen Namespace `self.Ocr` angesprochen
- * (INJEKTIONSREIHENFOLGE beachten: config -> toast -> logger -> clipboard ->
- * ui/result -> content.js):
+ * (INJEKTIONSREIHENFOLGE beachten: config -> i18n -> languages -> toast ->
+ * logger -> clipboard -> ui/result -> content.js):
  *  - lib/ocr/config.js     -> Ocr.Config            (Konstanten)
+ *  - lib/ocr/i18n.js       -> Ocr.t()               (UI-Texte aus _locales/)
+ *  - lib/ocr/languages.js  -> Ocr.Languages         (Sprachnamen)
  *  - lib/ocr/toast.js      -> Ocr.showToast()       (Status-Toast)
  *  - lib/ocr/logger.js     -> Ocr.log() / showError()
  *  - lib/ocr/clipboard.js  -> Ocr.copyToClipboard() (Zwischenablage)
@@ -38,10 +40,11 @@
   if (
     !window.Ocr ||
     typeof Ocr.Config !== "object" ||
+    typeof Ocr.t !== "function" ||
     typeof Ocr.Result !== "object"
   ) {
     console.error(
-        "[OCR] Helper-Module fehlen (lib/ocr/config|toast|logger|clipboard|ui/result.js). " +
+        "[OCR] Helper-Module fehlen (lib/ocr/config|i18n|languages|toast|logger|clipboard|ui/result.js). " +
         "Bitte Injection-Reihenfolge in background.js pruefen."
     );
     return;
@@ -79,6 +82,26 @@
     return "ocr-" + Date.now() + "-" + Math.random().toString(36).slice(2, 10);
   }
 
+  /** Shows the editable result dialog with an explicit copy action. */
+  function showResultDialog(text, confidence, languageName, imageUri) {
+    Ocr.Result.show({
+      text,
+      confidence,
+      language: languageName,
+      onCopy: async (editedText) => {
+        const copied = await Ocr.copyToClipboard(editedText);
+        Ocr.showToast(
+          copied ? Ocr.t("toastCopied") : Ocr.t("toastClipboardUnavailable"),
+          copied ? "success" : "error"
+        );
+        Ocr.log("OCR-Ergebnis kopiert:", copied, "Zeichen:", editedText.length);
+        return copied;
+      },
+      onReselect: () => initSelection(imageUri),
+      onOpenSettings: openLanguageSettings,
+    });
+  }
+
   /** Opens the options page (content scripts cannot call openOptionsPage). */
   function openLanguageSettings() {
     Promise.resolve()
@@ -93,7 +116,7 @@
     Ocr.log("OCR-Abbruch angefordert");
     if (activeOcrRequest.cancelRequested) return true;
     activeOcrRequest.cancelRequested = true;
-    Ocr.showToast("Cancelling text recognition …");
+    Ocr.showToast(Ocr.t("toastCancelling"));
     Promise.resolve()
       .then(() =>
         chrome.runtime.sendMessage({
@@ -145,7 +168,7 @@
         const status = selectionInProgress ? "Auswahl" : "Texterkennung";
         Ocr.log("Start abgewiesen:", status, "laeuft bereits");
         if (ocrInProgress) {
-          Ocr.showToast("Text recognition is already running. Press Esc to cancel.");
+          Ocr.showToast(Ocr.t("toastAlreadyRunning"));
         }
         return; // keine parallele Auswahl bzw. OCR-Ausfuehrung
       }
@@ -154,7 +177,7 @@
         !message.imageUri.startsWith("data:image/")
       ) {
         Ocr.showError(
-          "Start",
+          Ocr.t("contextStart"),
           new Error("Invalid image data received (not a data:image/* URI)."),
           { type: typeof message.imageUri }
         );
@@ -171,7 +194,7 @@
 
   function initSelection(imageUri) {
     if (!document.body) {
-      Ocr.showError("Start", new Error("document.body is not available (page not ready yet)."));
+      Ocr.showError(Ocr.t("contextStart"), new Error("document.body is not available (page not ready yet)."));
       return;
     }
 
@@ -192,7 +215,7 @@
     const ctx = canvas.getContext("2d");
     if (!ctx) {
       cleanupOverlay();
-      Ocr.showError("Overlay", new Error("2D canvas context is not available."));
+      Ocr.showError(Ocr.t("contextOverlay"), new Error("2D canvas context is not available."));
       return;
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -207,7 +230,7 @@
     };
     img.onerror = () => {
       cleanupOverlay();
-      Ocr.showError("Screenshot loading", new Error("Could not decode the screenshot image."), {
+      Ocr.showError(Ocr.t("contextScreenshot"), new Error("Could not decode the screenshot image."), {
         dataLen: imageUri ? imageUri.length : 0,
       });
     };
@@ -253,7 +276,7 @@
         rect.h >= CONFIG.minSelectionSize
       ) {
         if (!imgLoaded) {
-          Ocr.showError("OCR", new Error("Screenshot had not finished decoding when selection ended."));
+          Ocr.showError(Ocr.t("contextRecognition"), new Error("Screenshot had not finished decoding when selection ended."));
           return;
         }
         runOcr(img, rect, imageUri);
@@ -373,7 +396,7 @@
     const request = { id: createRequestId(), cancelRequested: false };
     activeOcrRequest = request;
     ocrInProgress = true;
-    Ocr.showToast("Recognizing text (local) …\nPress Esc to cancel");
+    Ocr.showToast(Ocr.t("toastRecognizing"));
     Ocr.log("Starte OCR fuer Auswahl", JSON.stringify(rect), "Bild", img.naturalWidth + "x" + img.naturalHeight);
     let usedLanguages = null;
     try {
@@ -382,7 +405,7 @@
         croppedDataUrl = cropImage(img, rect.x, rect.y, rect.w, rect.h);
         Ocr.log("Crop erzeugt", croppedDataUrl.length + " Zeichen dataURL");
       } catch (cropErr) {
-        Ocr.showError("Cropping", cropErr, {
+        Ocr.showError(Ocr.t("contextCropping"), cropErr, {
           selection: rect.w + "x" + rect.h,
           image: img.naturalWidth + "x" + img.naturalHeight,
         });
@@ -425,43 +448,45 @@
       const trimmed = (result.text || "").trim();
 
       if (trimmed) {
-        let details = trimmed.length + " Zeichen";
-        if (result.language) {
-          details += " · " + result.language;
+        const languageName = result.languageCode
+          ? Ocr.Languages.displayName(result.languageCode, Ocr.uiLanguage())
+          : result.language || null;
+        Ocr.log(
+          "OCR fertig:",
+          trimmed.length + " Zeichen",
+          languageName ? "· " + languageName : "",
+          "(Konfidenz " + Math.round(result.confidence) + "%)",
+          response.autoCopy ? "· sofort kopieren" : ""
+        );
+
+        // "Sofort kopieren": Dialog ueberspringen. Schlaegt das Kopieren fehl
+        // (z. B. Tab verlor den Fokus), faellt es auf den Dialog zurueck.
+        if (response.autoCopy) {
+          const copied = await Ocr.copyToClipboard(trimmed);
+          Ocr.log("OCR-Ergebnis automatisch kopiert:", copied, "Zeichen:", trimmed.length);
+          if (copied) {
+            Ocr.showToast(Ocr.t("toastCopied"), "success");
+            return;
+          }
         }
-        details += " (Konfidenz " + Math.round(result.confidence) + "%)";
-        Ocr.Result.show({
-          text: trimmed,
-          confidence: result.confidence,
-          language: result.language,
-          onCopy: async (editedText) => {
-            const copied = await Ocr.copyToClipboard(editedText);
-            Ocr.showToast(
-              copied
-                ? "Text copied to clipboard!"
-                : "Text recognized, but clipboard is unavailable (see console).",
-              copied ? "success" : "error"
-            );
-            Ocr.log("OCR-Ergebnis kopiert:", copied, "Zeichen:", editedText.length);
-            return copied;
-          },
-          onReselect: () => initSelection(imageUri),
-          onOpenSettings: openLanguageSettings,
-        });
-        Ocr.log("OCR fertig, Ergebnis angezeigt:", details);
+
+        showResultDialog(trimmed, result.confidence, languageName, imageUri);
+        if (response.autoCopy) {
+          Ocr.showToast(Ocr.t("resultAutoCopyFailed"), "error");
+        }
       } else {
-        Ocr.showToast("No text recognized.", "error");
+        Ocr.showToast(Ocr.t("toastNoText"), "error");
         Ocr.log("OCR fertig, kein Text");
       }
     } catch (err) {
       if (isOcrAbortError(err) || request.cancelRequested) {
-        Ocr.showToast("Text recognition cancelled.");
+        Ocr.showToast(Ocr.t("toastCancelled"));
         Ocr.log("OCR abgebrochen");
       } else {
         Ocr.showError(
-          "Text recognition",
+          Ocr.t("contextRecognition"),
           err,
-          usedLanguages ? { Languages: usedLanguages.join("+") } : undefined
+          usedLanguages ? { [Ocr.t("errorLanguages")]: usedLanguages.join("+") } : undefined
         );
       }
     } finally {

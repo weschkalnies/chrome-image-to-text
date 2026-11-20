@@ -200,6 +200,7 @@
         text: best.text,
         confidence: best.confidence,
         language: unambiguous ? languageLabel(best.language) : null,
+        languageCode: unambiguous ? best.language : null,
       };
     } finally {
       await op.terminateWorkers();

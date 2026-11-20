@@ -43,6 +43,22 @@
   }
 
   /**
+   * Language name in the given UI locale (e.g. "Deutsch" for deu in "de"),
+   * falling back to the English name.
+   */
+  function displayName(code, locale) {
+    const lang = BY_CODE.get(code);
+    if (!lang) return code;
+    try {
+      const name = new Intl.DisplayNames([locale || "en"], { type: "language" }).of(lang.iso);
+      if (name && name !== lang.iso) return name.charAt(0).toLocaleUpperCase(locale) + name.slice(1);
+    } catch (_error) {
+      // Intl.DisplayNames unavailable or invalid locale
+    }
+    return lang.name;
+  }
+
+  /**
    * Validates a stored/received selection. Returns a de-duplicated array of
    * 1..MAX_SELECTED supported codes, or null if the input is unusable.
    */
@@ -76,6 +92,7 @@
     MAX_SELECTED,
     STORAGE_KEY,
     label,
+    displayName,
     normalize,
     defaults,
   });

@@ -15,6 +15,8 @@ const { chromium } = require("playwright");
 const { resolveChrome } = require("./_env.cjs");
 
 const ROOT = path.resolve(__dirname, "..");
+const I18N_SCRIPT = fs.readFileSync(path.join(ROOT, "src", "lib", "ocr", "i18n.js"), "utf8");
+const MESSAGES_EN = fs.readFileSync(path.join(ROOT, "src", "_locales", "en", "messages.json"), "utf8");
 const LANGUAGES_SCRIPT = fs.readFileSync(path.join(ROOT, "src", "lib", "ocr", "languages.js"), "utf8");
 const ENGINE_SCRIPT = fs.readFileSync(path.join(ROOT, "src", "lib", "ocr", "engine.js"), "utf8");
 const OFFSCREEN_SCRIPT = fs.readFileSync(path.join(ROOT, "src", "offscreen.js"), "utf8");
@@ -57,7 +59,17 @@ const MOCKS = `
       listener(message, {}, () => {});
     }
   };
+  const __messages = ${MESSAGES_EN};
   window.chrome = {
+    i18n: {
+      getUILanguage() { return "en-US"; },
+      getMessage(key, subs) {
+        const entry = __messages[key];
+        if (!entry) return "";
+        const values = [].concat(subs === undefined ? [] : subs);
+        return entry.message.replace(/\\$(\\d)/g, (_m, n) => values[n - 1] ?? "");
+      }
+    },
     runtime: {
       onMessage: {
         addListener(listener) {
@@ -182,6 +194,7 @@ async function startSelection(page, imageUri = TEST_IMAGE, start = { x: 1, y: 1 
     await page.setContent("<!doctype html><html><body></body></html>");
     await page.addStyleTag({ content: CONTENT_CSS });
     await page.addScriptTag({ content: MOCKS });
+    await page.addScriptTag({ content: I18N_SCRIPT });
     await page.addScriptTag({ content: LANGUAGES_SCRIPT });
     await page.addScriptTag({ content: ENGINE_SCRIPT });
     await page.addScriptTag({ content: OFFSCREEN_SCRIPT });

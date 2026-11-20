@@ -42,7 +42,8 @@
     console.error("[OCR]", context, "-", name + ":", msg, "\n", err, extra || "");
 
     // Build readable toast line(s) – textContent only, never innerHTML (no XSS)
-    let line = context + " failed:";
+    let line =
+      typeof Ocr.t === "function" ? Ocr.t("errorFailed", context) : context + " failed:";
     line += "\n" + name + ": " + msg;
     if (extra) {
       for (const k in extra) {

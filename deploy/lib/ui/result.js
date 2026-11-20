@@ -26,7 +26,7 @@
     h2 { margin: 0; font-size: 20px; line-height: 1.25; }
     .meta { color: #526574; font-size: 13px; line-height: 1.4; }
     button.link {
-      min-height: 0; margin-left: 6px; padding: 0; border: 0; background: none;
+      min-height: 0; padding: 0; border: 0; background: none;
       color: #12314d; font: inherit; text-decoration: underline; cursor: pointer;
     }
     textarea {
@@ -43,6 +43,11 @@
     .status { min-height: 18px; color: #526574; font-size: 13px; }
     @media (max-width: 420px) { .dialog { padding: 18px; } textarea { min-height: 140px; } .actions button { flex: 1; } }
   `;
+
+  /** Localized UI text (lib/ocr/i18n.js); falls back to the key. */
+  function t(key, subs) {
+    return typeof Ocr.t === "function" ? Ocr.t(key, subs) : key;
+  }
 
   function element(tag, text) {
     const node = document.createElement(tag);
@@ -83,16 +88,16 @@
     dialog.className = "dialog";
     dialog.setAttribute("role", "dialog");
     dialog.setAttribute("aria-modal", "true");
-    dialog.setAttribute("aria-label", "OCR result");
+    dialog.setAttribute("aria-label", t("resultDialogLabel"));
 
-    const title = element("h2", "Recognized Text");
-    const metaParts = ["Confidence " + Math.round(options.confidence || 0) + "%"];
-    if (options.language) metaParts.push("Language " + options.language);
+    const title = element("h2", t("resultTitle"));
+    const metaParts = [t("resultConfidence", String(Math.round(options.confidence || 0)))];
+    if (options.language) metaParts.push(t("resultLanguage", options.language));
     const meta = element("div", metaParts.join(" · "));
     meta.className = "meta";
     let settingsButton = null;
     if (typeof options.onOpenSettings === "function") {
-      settingsButton = element("button", "Change languages");
+      settingsButton = element("button", t("resultSettings"));
       settingsButton.className = "link";
       settingsButton.type = "button";
       settingsButton.addEventListener("click", () => options.onOpenSettings());
@@ -101,7 +106,7 @@
 
     const textarea = element("textarea");
     textarea.value = options.text;
-    textarea.setAttribute("aria-label", "Recognized text, editable");
+    textarea.setAttribute("aria-label", t("resultTextLabel"));
 
     const status = element("div");
     status.className = "status";
@@ -110,12 +115,12 @@
 
     const actions = element("div");
     actions.className = "actions";
-    const closeButton = element("button", "Close");
+    const closeButton = element("button", t("resultClose"));
     closeButton.className = "secondary";
     closeButton.type = "button";
     closeButton.addEventListener("click", close);
 
-    const reselectButton = element("button", "Reselect area");
+    const reselectButton = element("button", t("resultReselect"));
     reselectButton.className = "secondary";
     reselectButton.type = "button";
     reselectButton.addEventListener("click", () => {
@@ -123,24 +128,22 @@
       if (typeof options.onReselect === "function") options.onReselect();
     });
 
-    const copyButton = element("button", "Copy");
+    const copyButton = element("button", t("resultCopy"));
     copyButton.className = "primary";
     copyButton.type = "button";
     copyButton.addEventListener("click", async () => {
       const text = textarea.value;
       if (!text.trim()) {
-        status.textContent = "Text is empty.";
+        status.textContent = t("resultEmpty");
         textarea.focus();
         return;
       }
       copyButton.disabled = true;
       try {
         const copied = typeof options.onCopy === "function" && await options.onCopy(text);
-        status.textContent = copied
-          ? "Copied to clipboard."
-          : "Copy failed. Please try again.";
+        status.textContent = copied ? t("resultCopied") : t("resultCopyFailed");
       } catch (error) {
-        status.textContent = "Copy failed. Please try again.";
+        status.textContent = t("resultCopyFailed");
       } finally {
         copyButton.disabled = false;
       }

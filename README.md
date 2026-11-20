@@ -11,11 +11,15 @@ and OCR results never leave your device.
 - 100% local OCR with Tesseract.js and 14 bundled language models
 - Choose one or two OCR languages in the options; default is your browser
   language plus English
+- Keyboard shortcut `Alt+Shift+O` (changeable in `chrome://extensions/shortcuts`)
 - Mouse-based selection, cancellable with `Esc`
-- Editable result dialog with confidence, language and explicit copy action
+- Editable result dialog with confidence, language and explicit copy action,
+  or optionally copy immediately without the dialog
+- Optional history of the last 10 results, kept only until the browser closes
+- User interface in English and German
 - High-DPI and screenshot scaling based on the actual image dimensions
 - No persistent host permissions: only `activeTab`, `scripting`, `offscreen`,
-  and `storage` (language setting only)
+  and `storage` (settings and optional session history)
 - Robust worker, offscreen OCR, and injection management for Manifest V3
 
 ## Quick start
@@ -35,17 +39,30 @@ Then in Chrome:
 
 ## Usage
 
-1. Click the extension icon.
+1. Click the extension icon or press `Alt+Shift+O`.
 2. Drag across the area you want to recognize.
 3. Review or edit the recognized text in the dialog.
 4. Select **Copy** to write it to the clipboard.
 
 `Esc` cancels an active selection or OCR operation, or closes the result dialog.
 
+### Settings
+
+Right-click the extension icon and choose **Options**, or select **Settings**
+in the result dialog:
+
+- **OCR languages:** pick one or two (see below)
+- **Keyboard shortcut:** shows the current shortcut and links to Chrome's
+  shortcut settings
+- **Copy text immediately:** skip the result dialog; if copying fails, the
+  dialog is shown as a fallback
+- **History:** off by default. When enabled, the last 10 recognized texts are
+  kept in `chrome.storage.session` (cleared when the browser closes, not
+  readable by websites). Turning it off deletes the history.
+
 ### OCR languages
 
-Right-click the extension icon and choose **Options** (or select **Change
-languages** in the result dialog) to pick one or two languages. With one
+Pick one or two languages. With one
 language OCR is fastest; with two, both are recognized in parallel and the
 result with the higher confidence wins.
 
@@ -54,6 +71,9 @@ Without a saved choice the extension uses the browser language plus English
 
 Supported: English, German, French, Spanish, Italian, Portuguese, Dutch,
 Polish, Czech, Swedish, Danish, Turkish, Russian, Ukrainian.
+
+The UI language follows the browser (English and German, texts in
+`src/_locales/`).
 
 To add a language, place `<code>.traineddata.gz` from
 [`@tesseract.js-data/<code>/4.0.0_best_int`](https://www.jsdelivr.com/package/npm/@tesseract.js-data/eng)
@@ -92,7 +112,8 @@ chrome-image-to-text/
 │   ├── content.css          # selection overlay styles
 │   ├── offscreen.html       # isolated MV3 offscreen document for local OCR
 │   ├── offscreen.js         # offscreen OCR controller
-│   ├── options.html/.js/.css # language settings page
+│   ├── options.html/.js/.css # settings page (languages, shortcut, copy, history)
+│   ├── _locales/            # UI texts (en, de)
 │   ├── icons/               # icon family
 │   └── lib/                 # OCR, UI and local Tesseract resources
 ├── deploy/                  # generated extension loaded in Chrome

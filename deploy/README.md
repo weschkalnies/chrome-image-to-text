@@ -20,7 +20,7 @@ chrome-image-to-text/
 │   ├── offscreen.js       # Offscreen OCR controller
 │   ├── icons/             # Extension icons
 │   └── lib/
-│       ├── ocr/           # Helper modules (config, languages, toast, logger, clipboard, engine)
+│       ├── ocr/           # Helper modules (config, i18n, languages, settings, toast, logger, clipboard, engine)
 │       ├── ui/result.js   # Protected, editable result dialog
 │       ├── tesseract.min.js … # Local Tesseract.js assets (vendor)
 ├── deploy/                ← GENERATED (npm run build) – load in Chrome

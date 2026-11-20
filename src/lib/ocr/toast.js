@@ -136,7 +136,7 @@
 
     if (allowClose) {
       toast.classList.add("ocr-closeable");
-      toast.title = "Click to close";
+      toast.title = typeof Ocr.t === "function" ? Ocr.t("toastClickToClose") : "Click to close";
       lastCloseHandler = dismissToast;
       toast.addEventListener("click", dismissToast);
     } else {

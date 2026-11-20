@@ -1,6 +1,6 @@
 {
   "name": "chrome-image-to-text",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "private": true,
   "description": "LocalOCR: Screen to Text – Chrome extension (Manifest V3), 100% offline. Build: src/ -> deploy/.",
   "scripts": {

@@ -8,18 +8,19 @@
  *  - Content-Skript race-sicher pro Tab injizieren
  *  - Bilddaten an das Content-Skript senden
  *  - OCR-Anfragen sicher an das isolierte MV3 Offscreen Document routen
- *  - Gewählte OCR-Sprachen (chrome.storage.local) an die OCR weitergeben
+ *  - Einstellungen (chrome.storage.local) an die OCR weitergeben:
+ *    Sprachen, "sofort kopieren", optionaler Verlauf (chrome.storage.session)
  *
  * Sicherheitshinweis:
  *  - Wir verwenden ausschließlich `activeTab`, `scripting`, `offscreen` und
- *    `storage` (nur für die Spracheinstellung).
+ *    `storage` (nur Einstellungen und optionaler Sitzungsverlauf).
  *    Es gibt KEINE dauerhaften Host-Permissions. Zugriff auf den Tab erfolgt
  *    nur nach explizitem Nutzer-Klick (transient activation).
  *  - `tab.url` ist nur dank `activeTab` verfügbar; wir prüfen daher
  *    defensiv auf undefined.
  */
 
-importScripts("lib/ocr/languages.js");
+importScripts("lib/ocr/languages.js", "lib/ocr/settings.js");
 
 // MV3-Service-Worker können jederzeit beendet werden. Ein Set mit zuvor
 // injizierten Tabs wäre deshalb nach einem Neustart falsch. Diese Map lebt
@@ -27,6 +28,8 @@ importScripts("lib/ocr/languages.js");
 const INJECTION_PROMISES = new Map();
 const CONTENT_SCRIPT_FILES = [
   "lib/ocr/config.js",
+  "lib/ocr/i18n.js",
+  "lib/ocr/languages.js",
   "lib/ocr/toast.js",
   "lib/ocr/logger.js",
   "lib/ocr/clipboard.js",
@@ -357,25 +360,69 @@ function createCancelledResponse() {
 }
 
 /**
- * Liefert die vom Nutzer gewählten OCR-Sprachen (1-2 Tesseract-Codes).
- * Ohne gespeicherte (oder mit ungültiger) Auswahl: Browsersprache + Englisch.
+ * Liest die Nutzereinstellungen.
+ * - languages: 1-2 Tesseract-Codes; ohne (gültige) Auswahl Browsersprache + Englisch
+ * - autoCopy / historyEnabled: Booleans, Default aus Ocr.Settings.DEFAULTS
  */
-async function getSelectedOcrLanguages() {
-  const Languages = self.Ocr.Languages;
+async function readSettings() {
+  const { Languages, Settings } = self.Ocr;
+  const KEYS = Settings.KEYS;
+  let stored = {};
   try {
     if (chrome.storage && chrome.storage.local) {
-      const stored = await chrome.storage.local.get(Languages.STORAGE_KEY);
-      const selection = Languages.normalize(stored && stored[Languages.STORAGE_KEY]);
-      if (selection) return selection;
+      stored =
+        (await chrome.storage.local.get([KEYS.languages, KEYS.autoCopy, KEYS.historyEnabled])) || {};
     }
   } catch (error) {
-    console.error("[OCR] Spracheinstellung konnte nicht gelesen werden:", error);
+    console.error("[OCR] Einstellungen konnten nicht gelesen werden:", error);
   }
   const uiLanguage =
     (chrome.i18n && typeof chrome.i18n.getUILanguage === "function"
       ? chrome.i18n.getUILanguage()
       : null) || (self.navigator && self.navigator.language);
-  return Languages.defaults(uiLanguage);
+  return {
+    languages: Languages.normalize(stored[KEYS.languages]) || Languages.defaults(uiLanguage),
+    autoCopy:
+      typeof stored[KEYS.autoCopy] === "boolean"
+        ? stored[KEYS.autoCopy]
+        : Settings.DEFAULTS.autoCopy,
+    historyEnabled:
+      typeof stored[KEYS.historyEnabled] === "boolean"
+        ? stored[KEYS.historyEnabled]
+        : Settings.DEFAULTS.historyEnabled,
+  };
+}
+
+// Serialisiert Verlaufs-Schreibzugriffe, damit parallele OCR-Läufe sich
+// nicht gegenseitig Einträge überschreiben.
+let HISTORY_WRITE_CHAIN = Promise.resolve();
+
+/** Hängt ein Ergebnis vorne an den Sitzungsverlauf an (max. HISTORY_MAX). */
+function addHistoryEntry(result) {
+  const { Settings } = self.Ocr;
+  const text = result && typeof result.text === "string" ? result.text.trim() : "";
+  if (!text || !chrome.storage || !chrome.storage.session) {
+    return HISTORY_WRITE_CHAIN;
+  }
+  const entry = {
+    text,
+    languageCode: result.languageCode || null,
+    confidence: Math.round(Number(result.confidence) || 0),
+    time: Date.now(),
+  };
+  HISTORY_WRITE_CHAIN = HISTORY_WRITE_CHAIN.then(async () => {
+    const data = await chrome.storage.session.get(Settings.HISTORY_KEY);
+    const list = Array.isArray(data && data[Settings.HISTORY_KEY])
+      ? data[Settings.HISTORY_KEY]
+      : [];
+    list.unshift(entry);
+    await chrome.storage.session.set({
+      [Settings.HISTORY_KEY]: list.slice(0, Settings.HISTORY_MAX),
+    });
+  }).catch((error) => {
+    console.error("[OCR] Verlauf konnte nicht gespeichert werden:", error);
+  });
+  return HISTORY_WRITE_CHAIN;
 }
 
 async function handleRunOcrRequest(message, sender) {
@@ -413,10 +460,11 @@ async function handleRunOcrRequest(message, sender) {
   clearOffscreenIdleTimer();
 
   try {
-    const [languages] = await Promise.all([
-      getSelectedOcrLanguages(),
+    const [settings] = await Promise.all([
+      readSettings(),
       ensureOffscreenDocument(),
     ]);
+    const languages = settings.languages;
     if (entry.cancelled) {
       return createCancelledResponse();
     }
@@ -436,7 +484,10 @@ async function handleRunOcrRequest(message, sender) {
         error: { name: "Error", message: "Offscreen OCR document did not respond." },
       };
     }
-    return { ...response, languages };
+    if (response.ok && settings.historyEnabled) {
+      await addHistoryEntry(response.result);
+    }
+    return { ...response, languages, autoCopy: settings.autoCopy };
   } catch (error) {
     if (entry.cancelled) {
       return createCancelledResponse();

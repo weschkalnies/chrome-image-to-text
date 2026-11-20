@@ -196,7 +196,7 @@ async function clickClosedShadowButton(context, page, label) {
   }
 }
 
-async function runOcrFlowOnPage(context, page, serviceWorker, url, label, logs) {
+async function runOcrFlowOnPage(context, page, serviceWorker, url, label, logs, { autoCopy = false } = {}) {
   const logStartIndex = logs.length;
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto(url, { waitUntil: "load", timeout: 10000 });
@@ -230,6 +230,22 @@ async function runOcrFlowOnPage(context, page, serviceWorker, url, label, logs) 
   await page.mouse.move(x2, y2, { steps: 12 });
   await page.mouse.up();
   log("[" + label + "] Auswahl gezogen (" + x1 + "," + y1 + ")->(" + x2 + "," + y2 + ")");
+
+  if (autoCopy) {
+    // "Sofort kopieren": kein Dialog, Text landet direkt in der Zwischenablage.
+    const toast = await waitForFinalToast(context, page, 45000);
+    const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
+    assert(
+      normalizeText(clipboardText) === EXPECTED_TEXT,
+      "[" + label + "] Unerwarteter OCR-Text: " + JSON.stringify(clipboardText)
+    );
+    assert(
+      (await page.$("#ocr-result-host")) === null,
+      "[" + label + "] Bei autoCopy darf kein Ergebnisdialog erscheinen."
+    );
+    log("E2E [" + label + "] erfolgreich: " + toast + " | OCR=" + JSON.stringify(clipboardText));
+    return;
+  }
 
   await page.waitForSelector("#ocr-result-host", { state: "attached", timeout: 45000 });
   const resultPrivacy = await page.evaluate(() => {
@@ -285,8 +301,14 @@ const log = (message) => {
       "--remote-debugging-port=" + port,
       "--no-first-run",
       "--no-default-browser-check",
+      // Feste UI-Sprache, damit Button-/Toast-Texte deterministisch englisch sind.
+      "--lang=en-US",
       "about:blank",
-    ], { detached: false, stdio: "ignore" });
+    ], {
+      detached: false,
+      stdio: "ignore",
+      env: { ...process.env, LANGUAGE: "en_US", LC_ALL: "en_US.UTF-8" },
+    });
     proc.once("error", (error) => { spawnError = error; });
 
     const version = await waitForPort(port, () => spawnError, 15000);
@@ -330,6 +352,21 @@ const log = (message) => {
     await serviceWorker.evaluate(() => chrome.storage.local.set({ ocrLanguages: ["deu", "eng"] }));
     await page.evaluate(() => navigator.clipboard.writeText(""));
     await runOcrFlowOnPage(context, page, serviceWorker, testOrigin + "/", "deu+eng", logs);
+
+    // "Sofort kopieren" + Sitzungsverlauf.
+    await serviceWorker.evaluate(() =>
+      chrome.storage.local.set({ ocrLanguages: ["eng"], autoCopy: true, historyEnabled: true })
+    );
+    await page.evaluate(() => navigator.clipboard.writeText(""));
+    await runOcrFlowOnPage(context, page, serviceWorker, testOrigin + "/", "autoCopy", logs, { autoCopy: true });
+    const history = await serviceWorker.evaluate(async () =>
+      (await chrome.storage.session.get("ocrHistory")).ocrHistory
+    );
+    assert(
+      Array.isArray(history) && history.length === 1 && normalizeText(history[0].text) === EXPECTED_TEXT,
+      "Verlauf muss genau den erkannten Text enthalten: " + JSON.stringify(history)
+    );
+    log("E2E [history] erfolgreich: " + JSON.stringify(history[0].text));
   } catch (error) {
     console.error("E2E FEHLER:", error && error.stack ? error.stack : error);
     console.error("===== Relevante OCR-Logs =====");

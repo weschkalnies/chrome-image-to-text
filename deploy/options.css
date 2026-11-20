@@ -24,7 +24,7 @@ body {
   color: var(--fg);
   font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
-main { max-width: 520px; padding: 16px; }
+main { max-width: 640px; margin: 0 auto; padding: 24px 16px; }
 h1 { margin: 0 0 6px; font-size: 18px; }
 .hint { margin: 0 0 14px; color: var(--muted); }
 fieldset {
@@ -45,12 +45,62 @@ label {
   cursor: pointer;
 }
 label:hover { background: var(--hover); }
+fieldset label { min-width: 0; }
+fieldset label span { white-space: nowrap; }
+fieldset label .native { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 label.disabled { cursor: not-allowed; opacity: .5; }
 label.disabled:hover { background: none; }
 input { accent-color: var(--accent); margin: 0; }
 .native { color: var(--muted); }
-.status { min-height: 20px; margin: 12px 0 0; color: var(--muted); }
+.status { min-height: 20px; margin: 8px 0 0; color: var(--muted); }
 .visually-hidden {
   position: absolute; width: 1px; height: 1px; overflow: hidden;
   clip: rect(0 0 0 0); white-space: nowrap;
 }
+section { margin: 0 0 16px; }
+#languages-status { margin-top: 6px; }
+section + section { padding-top: 16px; border-top: 1px solid var(--border); }
+h2 { margin: 0 0 8px; font-size: 15px; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+#shortcut-current { font-variant-numeric: tabular-nums; }
+kbd {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+label.toggle { align-items: flex-start; border: 0; padding: 4px 0; }
+label.toggle:hover { background: none; }
+label.toggle input { margin-top: 3px; }
+label.toggle small { display: block; margin: 2px 0 0; }
+button.secondary {
+  min-height: 30px;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+button.secondary:hover { background: var(--hover); }
+.history { list-style: none; margin: 8px 0 10px; padding: 0; display: grid; gap: 6px; }
+.history li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.history .meta { grid-column: 1 / -1; color: var(--muted); font-size: 12px; }
+.history .text {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.history button { align-self: start; }

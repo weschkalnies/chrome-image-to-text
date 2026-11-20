@@ -43,6 +43,8 @@ function createHarness({
   holdOffscreenRun = false,
   uiLanguage = "en-US",
   storedLanguages,
+  storedSettings = {},
+  sessionStore = {},
 } = {}) {
   const listeners = {};
   const metrics = {
@@ -130,8 +132,22 @@ function createHarness({
     },
     storage: {
       local: {
+        async get(keys) {
+          const store = { ...storedSettings };
+          if (storedLanguages !== undefined) store.ocrLanguages = storedLanguages;
+          const out = {};
+          for (const key of [].concat(keys)) {
+            if (key in store) out[key] = store[key];
+          }
+          return out;
+        },
+      },
+      session: {
         async get(key) {
-          return storedLanguages === undefined ? {} : { [key]: storedLanguages };
+          return key in sessionStore ? { [key]: sessionStore[key] } : {};
+        },
+        async set(items) {
+          Object.assign(sessionStore, JSON.parse(JSON.stringify(items)));
         },
       },
     },
@@ -180,7 +196,12 @@ function createHarness({
           }
           return {
             ok: true,
-            result: { text: "OK " + message.requestId, confidence: 95, language: "English" },
+            result: {
+              text: "OK " + message.requestId,
+              confidence: 95,
+              language: "English",
+              languageCode: "eng",
+            },
           };
         }
         if (message.action === "offscreen_cancel_ocr") {
@@ -275,6 +296,7 @@ function createHarness({
 
   return {
     metrics,
+    sessionStore,
     pendingTimers,
     click: (tab = TAB) => listeners.click(tab),
     sendRuntimeMessage,
@@ -489,7 +511,31 @@ function createHarness({
     "Unbekannte Codes und Duplikate werden verworfen."
   );
 
-  // 12. open_options oeffnet die Optionsseite.
+  // 12. autoCopy wird an das Content-Skript durchgereicht; Verlauf nur wenn aktiviert.
+  const plain = createHarness();
+  const plainResp = await plain.sendRuntimeMessage(
+    { target: "background", action: "run_ocr", requestId: "req-plain", dataUrl: "data:image/png;base64,AA==" },
+    { tab: { id: 17 } }
+  );
+  assert.strictEqual(plainResp.autoCopy, false, "autoCopy ist standardmaessig aus.");
+  assert.strictEqual(plain.sessionStore.ocrHistory, undefined, "Verlauf ist standardmaessig aus.");
+
+  const withHistory = createHarness({ storedSettings: { autoCopy: true, historyEnabled: true } });
+  for (let i = 1; i <= 12; i += 1) {
+    const resp = await withHistory.sendRuntimeMessage(
+      { target: "background", action: "run_ocr", requestId: "req-h" + i, dataUrl: "data:image/png;base64,AA==" },
+      { tab: { id: 17 } }
+    );
+    assert.strictEqual(resp.autoCopy, true, "Gespeichertes autoCopy muss ankommen.");
+  }
+  const history = withHistory.sessionStore.ocrHistory;
+  assert.strictEqual(history.length, 10, "Verlauf ist auf 10 Eintraege begrenzt.");
+  assert.strictEqual(history[0].text, "OK req-h12", "Neuester Eintrag steht vorne.");
+  assert.strictEqual(history[9].text, "OK req-h3", "Aelteste Eintraege fallen heraus.");
+  assert.strictEqual(history[0].languageCode, "eng");
+  assert.strictEqual(history[0].confidence, 95);
+
+  // 13. open_options oeffnet die Optionsseite.
   const optionsHarness = createHarness();
   const optionsResp = await optionsHarness.sendRuntimeMessage({ target: "background", action: "open_options" });
   assert.strictEqual(optionsResp.ok, true);

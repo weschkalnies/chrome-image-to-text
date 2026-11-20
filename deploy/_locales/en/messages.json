@@ -1,0 +1,158 @@
+{
+  "extName": {
+    "message": "LocalOCR: Screen to Text"
+  },
+  "extDescription": {
+    "message": "Select any area on screen and convert it to text locally using Tesseract OCR. 100% offline."
+  },
+  "actionTitle": {
+    "message": "Start Screen OCR"
+  },
+  "commandStart": {
+    "message": "Start text recognition"
+  },
+  "toastRecognizing": {
+    "message": "Recognizing text (local) …\nPress Esc to cancel"
+  },
+  "toastCancelling": {
+    "message": "Cancelling text recognition …"
+  },
+  "toastCancelled": {
+    "message": "Text recognition cancelled."
+  },
+  "toastAlreadyRunning": {
+    "message": "Text recognition is already running. Press Esc to cancel."
+  },
+  "toastCopied": {
+    "message": "Text copied to clipboard!"
+  },
+  "toastClipboardUnavailable": {
+    "message": "Text recognized, but clipboard is unavailable (see console)."
+  },
+  "toastNoText": {
+    "message": "No text recognized."
+  },
+  "toastClickToClose": {
+    "message": "Click to close"
+  },
+  "errorFailed": {
+    "message": "$1 failed:"
+  },
+  "contextStart": {
+    "message": "Start"
+  },
+  "contextOverlay": {
+    "message": "Overlay"
+  },
+  "contextScreenshot": {
+    "message": "Screenshot loading"
+  },
+  "contextCropping": {
+    "message": "Cropping"
+  },
+  "contextRecognition": {
+    "message": "Text recognition"
+  },
+  "errorLanguages": {
+    "message": "Languages"
+  },
+  "resultDialogLabel": {
+    "message": "OCR result"
+  },
+  "resultTitle": {
+    "message": "Recognized Text"
+  },
+  "resultConfidence": {
+    "message": "Confidence $1%"
+  },
+  "resultLanguage": {
+    "message": "Language $1"
+  },
+  "resultSettings": {
+    "message": "Settings"
+  },
+  "resultTextLabel": {
+    "message": "Recognized text, editable"
+  },
+  "resultClose": {
+    "message": "Close"
+  },
+  "resultReselect": {
+    "message": "Reselect area"
+  },
+  "resultCopy": {
+    "message": "Copy"
+  },
+  "resultEmpty": {
+    "message": "Text is empty."
+  },
+  "resultCopied": {
+    "message": "Copied to clipboard."
+  },
+  "resultCopyFailed": {
+    "message": "Copy failed. Please try again."
+  },
+  "resultAutoCopyFailed": {
+    "message": "Automatic copy failed. Please use Copy."
+  },
+  "optionsTitle": {
+    "message": "LocalOCR Settings"
+  },
+  "optionsLanguagesHeading": {
+    "message": "OCR languages"
+  },
+  "optionsLanguagesHint": {
+    "message": "Choose one or two languages for text recognition. With two languages, both are tried and the better result wins. One language is faster. To switch languages, uncheck one first."
+  },
+  "optionsShortcutHeading": {
+    "message": "Keyboard shortcut"
+  },
+  "optionsShortcutCurrent": {
+    "message": "Start text recognition: $1"
+  },
+  "optionsShortcutNone": {
+    "message": "not set"
+  },
+  "optionsShortcutChange": {
+    "message": "Change shortcut"
+  },
+  "optionsBehaviorHeading": {
+    "message": "After recognition"
+  },
+  "optionsAutoCopy": {
+    "message": "Copy text immediately"
+  },
+  "optionsAutoCopyHint": {
+    "message": "Skips the result dialog and copies the recognized text directly."
+  },
+  "optionsHistoryHeading": {
+    "message": "History"
+  },
+  "optionsHistoryEnable": {
+    "message": "Keep recent results"
+  },
+  "optionsHistoryHint": {
+    "message": "Stores the last 10 recognized texts locally until the browser is closed."
+  },
+  "optionsHistoryEmpty": {
+    "message": "No entries yet."
+  },
+  "optionsHistoryClear": {
+    "message": "Clear history"
+  },
+  "optionsHistoryCopy": {
+    "message": "Copy"
+  },
+  "optionsHistoryCopied": {
+    "message": "Copied"
+  },
+  "optionsSaved": {
+    "message": "Saved"
+  },
+  "optionsSavedLanguages": {
+    "message": "Saved: $1"
+  },
+  "optionsSaveFailed": {
+    "message": "Saving failed. Please try again."
+  }
+}

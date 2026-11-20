@@ -1,0 +1,158 @@
+{
+  "extName": {
+    "message": "LocalOCR: Screen to Text"
+  },
+  "extDescription": {
+    "message": "Bildschirmbereich auswählen und lokal per Tesseract-OCR in Text umwandeln. 100 % offline."
+  },
+  "actionTitle": {
+    "message": "Texterkennung starten"
+  },
+  "commandStart": {
+    "message": "Texterkennung starten"
+  },
+  "toastRecognizing": {
+    "message": "Text wird erkannt (lokal) …\nEsc zum Abbrechen"
+  },
+  "toastCancelling": {
+    "message": "Texterkennung wird abgebrochen …"
+  },
+  "toastCancelled": {
+    "message": "Texterkennung abgebrochen."
+  },
+  "toastAlreadyRunning": {
+    "message": "Texterkennung läuft bereits. Esc zum Abbrechen."
+  },
+  "toastCopied": {
+    "message": "Text in die Zwischenablage kopiert!"
+  },
+  "toastClipboardUnavailable": {
+    "message": "Text erkannt, aber die Zwischenablage ist nicht verfügbar (siehe Konsole)."
+  },
+  "toastNoText": {
+    "message": "Kein Text erkannt."
+  },
+  "toastClickToClose": {
+    "message": "Zum Schließen klicken"
+  },
+  "errorFailed": {
+    "message": "$1 fehlgeschlagen:"
+  },
+  "contextStart": {
+    "message": "Start"
+  },
+  "contextOverlay": {
+    "message": "Overlay"
+  },
+  "contextScreenshot": {
+    "message": "Screenshot laden"
+  },
+  "contextCropping": {
+    "message": "Zuschneiden"
+  },
+  "contextRecognition": {
+    "message": "Texterkennung"
+  },
+  "errorLanguages": {
+    "message": "Sprachen"
+  },
+  "resultDialogLabel": {
+    "message": "OCR-Ergebnis"
+  },
+  "resultTitle": {
+    "message": "Erkannter Text"
+  },
+  "resultConfidence": {
+    "message": "Konfidenz $1 %"
+  },
+  "resultLanguage": {
+    "message": "Sprache $1"
+  },
+  "resultSettings": {
+    "message": "Einstellungen"
+  },
+  "resultTextLabel": {
+    "message": "Erkannter Text, bearbeitbar"
+  },
+  "resultClose": {
+    "message": "Schließen"
+  },
+  "resultReselect": {
+    "message": "Neu auswählen"
+  },
+  "resultCopy": {
+    "message": "Kopieren"
+  },
+  "resultEmpty": {
+    "message": "Der Text ist leer."
+  },
+  "resultCopied": {
+    "message": "In die Zwischenablage kopiert."
+  },
+  "resultCopyFailed": {
+    "message": "Kopieren fehlgeschlagen. Bitte erneut versuchen."
+  },
+  "resultAutoCopyFailed": {
+    "message": "Automatisches Kopieren fehlgeschlagen. Bitte „Kopieren“ verwenden."
+  },
+  "optionsTitle": {
+    "message": "LocalOCR-Einstellungen"
+  },
+  "optionsLanguagesHeading": {
+    "message": "OCR-Sprachen"
+  },
+  "optionsLanguagesHint": {
+    "message": "Wähle eine oder zwei Sprachen für die Texterkennung. Bei zwei Sprachen werden beide ausprobiert und das bessere Ergebnis gewinnt. Eine Sprache ist schneller. Zum Wechseln zuerst eine Sprache abwählen."
+  },
+  "optionsShortcutHeading": {
+    "message": "Tastenkürzel"
+  },
+  "optionsShortcutCurrent": {
+    "message": "Texterkennung starten: $1"
+  },
+  "optionsShortcutNone": {
+    "message": "nicht festgelegt"
+  },
+  "optionsShortcutChange": {
+    "message": "Kürzel ändern"
+  },
+  "optionsBehaviorHeading": {
+    "message": "Nach der Erkennung"
+  },
+  "optionsAutoCopy": {
+    "message": "Text sofort kopieren"
+  },
+  "optionsAutoCopyHint": {
+    "message": "Überspringt den Ergebnisdialog und kopiert den erkannten Text direkt."
+  },
+  "optionsHistoryHeading": {
+    "message": "Verlauf"
+  },
+  "optionsHistoryEnable": {
+    "message": "Letzte Ergebnisse merken"
+  },
+  "optionsHistoryHint": {
+    "message": "Speichert die letzten 10 erkannten Texte lokal, bis der Browser geschlossen wird."
+  },
+  "optionsHistoryEmpty": {
+    "message": "Noch keine Einträge."
+  },
+  "optionsHistoryClear": {
+    "message": "Verlauf löschen"
+  },
+  "optionsHistoryCopy": {
+    "message": "Kopieren"
+  },
+  "optionsHistoryCopied": {
+    "message": "Kopiert"
+  },
+  "optionsSaved": {
+    "message": "Gespeichert"
+  },
+  "optionsSavedLanguages": {
+    "message": "Gespeichert: $1"
+  },
+  "optionsSaveFailed": {
+    "message": "Speichern fehlgeschlagen. Bitte erneut versuchen."
+  }
+}

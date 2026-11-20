@@ -3,23 +3,60 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>LocalOCR Settings</title>
+  <title data-i18n="optionsTitle">LocalOCR Settings</title>
   <link rel="stylesheet" href="options.css">
 </head>
 <body>
   <main>
-    <h1>OCR languages</h1>
-    <p class="hint">
-      Choose one or two languages for text recognition. With two languages,
-      both are tried and the better result wins. One language is faster.
-      To switch languages, uncheck one first. Changes are saved automatically.
-    </p>
-    <fieldset id="languages">
-      <legend class="visually-hidden">OCR languages</legend>
-    </fieldset>
+    <section aria-labelledby="h-languages">
+      <h1 id="h-languages" data-i18n="optionsLanguagesHeading">OCR languages</h1>
+      <p class="hint" data-i18n="optionsLanguagesHint"></p>
+      <fieldset id="languages">
+        <legend class="visually-hidden" data-i18n="optionsLanguagesHeading"></legend>
+      </fieldset>
+      <p id="languages-status" class="status" role="status" aria-live="polite"></p>
+    </section>
+
+    <section aria-labelledby="h-shortcut">
+      <h2 id="h-shortcut" data-i18n="optionsShortcutHeading">Keyboard shortcut</h2>
+      <div class="row">
+        <span id="shortcut-current"></span>
+        <button id="shortcut-change" type="button" class="secondary" data-i18n="optionsShortcutChange"></button>
+      </div>
+    </section>
+
+    <section aria-labelledby="h-behavior">
+      <h2 id="h-behavior" data-i18n="optionsBehaviorHeading">After recognition</h2>
+      <label class="toggle">
+        <input id="auto-copy" type="checkbox">
+        <span>
+          <span data-i18n="optionsAutoCopy"></span>
+          <small class="hint" data-i18n="optionsAutoCopyHint"></small>
+        </span>
+      </label>
+    </section>
+
+    <section aria-labelledby="h-history">
+      <h2 id="h-history" data-i18n="optionsHistoryHeading">History</h2>
+      <label class="toggle">
+        <input id="history-enabled" type="checkbox">
+        <span>
+          <span data-i18n="optionsHistoryEnable"></span>
+          <small class="hint" data-i18n="optionsHistoryHint"></small>
+        </span>
+      </label>
+      <div id="history" hidden>
+        <ol id="history-list" class="history"></ol>
+        <p id="history-empty" class="hint" data-i18n="optionsHistoryEmpty"></p>
+        <button id="history-clear" type="button" class="secondary" data-i18n="optionsHistoryClear"></button>
+      </div>
+    </section>
+
     <p id="status" class="status" role="status" aria-live="polite"></p>
   </main>
+  <script src="lib/ocr/i18n.js"></script>
   <script src="lib/ocr/languages.js"></script>
+  <script src="lib/ocr/settings.js"></script>
   <script src="options.js"></script>
 </body>
 </html>
