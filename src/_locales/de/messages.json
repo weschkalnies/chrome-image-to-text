@@ -8,6 +8,12 @@
   "actionTitle": {
     "message": "Texterkennung starten"
   },
+  "actionBlockedTitle": {
+    "message": "Auf dieser Seite nicht verfügbar: Chrome erlaubt Erweiterungen nicht im Chrome Web Store und auf browserinternen Seiten."
+  },
+  "actionErrorTitle": {
+    "message": "Texterkennung konnte auf dieser Seite nicht gestartet werden. Seite neu laden und erneut versuchen."
+  },
   "commandStart": {
     "message": "Texterkennung starten"
   },

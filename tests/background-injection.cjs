@@ -56,6 +56,7 @@ function createHarness({
     starts: 0,
     badges: [],
     badgeColors: [],
+    titles: [],
     offscreenCreates: 0,
     offscreenCloses: 0,
     offscreenPings: 0,
@@ -117,6 +118,9 @@ function createHarness({
       async setBadgeBackgroundColor(details) {
         metrics.badgeColors.push({ ...details });
       },
+      async setTitle(details) {
+        metrics.titles.push({ ...details });
+      },
     },
     offscreen: {
       Reason: { WORKERS: "WORKERS" },
@@ -156,6 +160,9 @@ function createHarness({
       },
     },
     i18n: {
+      getMessage(key) {
+        return "msg:" + key;
+      },
       getUILanguage() {
         return uiLanguage;
       },
@@ -369,6 +376,11 @@ function createHarness({
       [{ tabId: 17, text: "!" }],
       `Blockierte URL muss "!"-Badge setzen: ${url}`
     );
+    assert.deepStrictEqual(
+      blockedHarness.metrics.titles,
+      [{ tabId: 17, title: "msg:actionBlockedTitle" }],
+      `Blockierte URL muss erklärenden Tooltip setzen: ${url}`
+    );
   }
 
   // 4. Erlaubte URLs (inkl. file:// und Nicht-Webstore-Seiten auf chrome.google.com) müssen laufen und das Badge löschen.
@@ -382,6 +394,11 @@ function createHarness({
       allowedHarness.metrics.badges,
       [{ tabId: 17, text: "" }],
       `Erlaubte URL muss vorheriges Badge löschen: ${url}`
+    );
+    assert.deepStrictEqual(
+      allowedHarness.metrics.titles,
+      [{ tabId: 17, title: "msg:actionTitle" }],
+      `Erlaubte URL muss Standard-Tooltip wiederherstellen: ${url}`
     );
   }
 

@@ -148,12 +148,37 @@ function isInjectableUrl(url) {
 }
 
 /**
- * Setzt oder löscht das Aktions-Badge für den angegebenen Tab.
+ * Liefert einen lokalisierten Text aus _locales oder den Fallback.
+ *
+ * @param {string} key
+ * @param {string} fallback
+ * @returns {string}
+ */
+function getActionMessage(key, fallback) {
+  try {
+    if (chrome.i18n && typeof chrome.i18n.getMessage === "function") {
+      const message = chrome.i18n.getMessage(key);
+      if (message) {
+        return message;
+      }
+    }
+  } catch (_error) {
+    // i18n nicht verfügbar (z. B. in Tests) -> Fallback.
+  }
+  return fallback;
+}
+
+/**
+ * Setzt oder löscht das Aktions-Badge für den angegebenen Tab und passt den
+ * Tooltip an, damit Nutzer beim Überfahren des Icons den Grund sehen.
+ * Ohne `title` wird der Standard-Tooltip wiederhergestellt.
+ * Chrome setzt tab-spezifische Badges/Titel bei Navigation selbst zurück.
  *
  * @param {number} tabId
  * @param {string} text
+ * @param {string} [title]
  */
-async function setActionBadge(tabId, text) {
+async function setActionBadge(tabId, text, title) {
   if (!chrome.action || typeof chrome.action.setBadgeText !== "function") {
     return;
   }
@@ -162,6 +187,12 @@ async function setActionBadge(tabId, text) {
       await chrome.action.setBadgeBackgroundColor({ tabId, color: "#d93025" });
     }
     await chrome.action.setBadgeText({ tabId, text });
+    if (typeof chrome.action.setTitle === "function") {
+      await chrome.action.setTitle({
+        tabId,
+        title: title || getActionMessage("actionTitle", "Start Screen OCR"),
+      });
+    }
   } catch (_error) {
     // Tab existiert evtl. nicht mehr; kein kritischer Fehler.
   }
@@ -175,7 +206,14 @@ chrome.action.onClicked.addListener(async (tab) => {
 
   if (!isInjectableUrl(tab.url)) {
     console.error("[OCR] Auf dieser Seite kann die Erweiterung nicht ausgeführt werden.");
-    await setActionBadge(tab.id, "!");
+    await setActionBadge(
+      tab.id,
+      "!",
+      getActionMessage(
+        "actionBlockedTitle",
+        "Not available on this page: Chrome does not allow extensions on the Chrome Web Store or browser-internal pages."
+      )
+    );
     return;
   }
 
@@ -204,7 +242,14 @@ chrome.action.onClicked.addListener(async (tab) => {
     });
     console.log("[OCR] start_selection gesendet an Tab", tab.id);
   } catch (error) {
-    await setActionBadge(tab.id, "!");
+    await setActionBadge(
+      tab.id,
+      "!",
+      getActionMessage(
+        "actionErrorTitle",
+        "Could not start OCR on this page. Reload the page and try again."
+      )
+    );
     console.error(
       "[OCR] Fehler beim Starten der OCR-Auswahl:",
       error && error.message ? error.message : error,

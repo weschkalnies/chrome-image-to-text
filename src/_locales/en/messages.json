@@ -8,6 +8,12 @@
   "actionTitle": {
     "message": "Start Screen OCR"
   },
+  "actionBlockedTitle": {
+    "message": "Not available on this page: Chrome does not allow extensions on the Chrome Web Store or browser-internal pages."
+  },
+  "actionErrorTitle": {
+    "message": "Could not start OCR on this page. Reload the page and try again."
+  },
   "commandStart": {
     "message": "Start text recognition"
   },
